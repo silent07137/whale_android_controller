@@ -5,7 +5,11 @@
 ## 适用于你的部署
 
 - Android Root（已适配 KernelSU）；已安装 `/data/local/chroot/ubuntu`。
-- Termux BusyBox 已存在：`/data/data/com.termux/files/usr/bin/busybox`。
+- 从 Termux 已验证的 BusyBox 复制一份到 `/data/adb/whale-controller/busybox`，避免独立 APK 的 KernelSU mount namespace 无法访问 Termux 私有路径。首次部署执行：
+  ```sh
+  su -c 'mkdir -p /data/adb/whale-controller && chmod 700 /data/adb/whale-controller && cp /data/data/com.termux/files/usr/bin/busybox /data/adb/whale-controller/busybox && chmod 700 /data/adb/whale-controller/busybox && /data/adb/whale-controller/busybox --help >/dev/null && echo BUSYBOX_READY'
+  ```
+  如果原文件因 Root namespace 不可见，请先从 Termux 内运行上述命令，不要从 APK 内复制。
 - Ubuntu 中已有经你验证的一键脚本 `/root/start-whale.sh`、`/root/stop-whale.sh`。
 - Linux QQ / SnowLuma / K0nd1us QQ Agent 0.4 均已部署。
 - App **不包含** QQ、SnowLuma、Agent、聊天数据、账号或 API Key。
