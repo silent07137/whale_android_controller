@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private Button refreshButton;
     private boolean syncing = false;
     private boolean busy = false;
+    private String lastOperation = "尚未执行操作";
     private File installScript;
 
     @Override public void onCreate(Bundle state) {
@@ -253,7 +254,12 @@ public class MainActivity extends Activity {
             }
             final String response = result;
             runOnUiThread(() -> {
-                activityText.setText(response);
+                // Keep the actual Start/Stop/Root error visible. A subsequent automatic
+                // status check must not overwrite the preceding operation output.
+                if (!"status".equals(action)) {
+                    lastOperation = "操作：" + action + "\n" + response;
+                }
+                activityText.setText(lastOperation);
                 busy = false;
                 setControlsEnabled(true);
                 if ("install".equals(action) && response.contains("CONTROLLER_INSTALLED=1")) execute("status");
