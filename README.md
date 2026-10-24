@@ -43,7 +43,7 @@
 
 本项目使用 **JDK 17、Gradle 8.9、Android Gradle Plugin 8.7.3、Android SDK 35**。已提供 GitHub Actions 自动构建配置。
 
-1. 打开仓库的 **[Actions](../../actions)**。
+1. 打开仓库的 **[Actions](https://github.com/silent07137/whale_android_controller/actions)**。
 2. 选择 **Build 大肥鱼控制台 APK**，可手动运行工作流；推送到 `main` 后也会触发。
 3. 构建成功后，在对应运行页面的 **Artifacts** 下载 `WhaleController-debug-apk`。
 4. 解压获得 `app-debug.apk`，安装到自己的安卓手机，并在 **KernelSU → 超级用户** 中核实后授予 Root 权限。
