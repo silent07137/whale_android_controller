@@ -1,92 +1,86 @@
-# 大肥鱼控制台 v0.2 · KernelSU 适配版（Android 原生 App 工程）🐋
+# 🐋 大肥鱼控制台 | Whale Android Controller
 
-这是一个 **独立 Android 控制台的可编译源码工程**，不是已编译的 APK。构建后 App 直接用 Root shell 管理现有 Ubuntu chroot，不调用 Termux 的 Activity，也不主动创建 Termux 最近任务卡片。
+> 作者：**[silent07137](https://github.com/silent07137)** · 安卓本机部署 QQ Agent 的实践工程与技术教程  
+> 项目状态：**KernelSU / Root 方案已完成真机基础验证**；Shizuku / ADB 方案仍处实验可行性阶段。
 
-## 适用于你的部署
+本仓库包含一款基于 **Android 原生界面 + KernelSU Root Shell** 的控制台，以及两篇部署技术文档。目标是在 ARM64 安卓手机上管理已有的 **Ubuntu chroot、Linux QQ、SnowLuma 和 K0nd1us/QQ-agent 0.4**，无需通过打开 Termux 终端来启动服务。
 
-- Android Root（已适配 KernelSU）；已安装 `/data/local/chroot/ubuntu`。
-- **使用 KernelSU 内置 BusyBox**：`/data/adb/ksu/bin/busybox`。不再从 Termux 私有路径复制：Termux 安装的 `busybox` 可能依赖 `libbusybox.so` 等运行库，仅复制小型可执行文件并不能保证独立运行。可在 Termux 普通终端核对 `su -c '/data/adb/ksu/bin/busybox --help >/dev/null && echo KSU_BUSYBOX_OK'`，无需改动原始 Ubuntu 环境。
-- Ubuntu 中已有经你验证的一键脚本 `/root/start-whale.sh`、`/root/stop-whale.sh`。
-- Linux QQ / SnowLuma / K0nd1us QQ Agent 0.4 均已部署。
-- App **不包含** QQ、SnowLuma、Agent、聊天数据、账号或 API Key。
+**本项目并非 QQ、腾讯、SnowLuma、KernelSU 或 QQ-agent 的官方产品，也不提供这些第三方项目的安装包、账号、令牌、API Key 或私有聊天数据。**
 
-## KernelSU 专项说明（v0.2）
+## 📚 部署教程
 
-- **Root 授权**：应用使用 `su -c`，由 KernelSU 的「超级用户」页面授权该 APK，不需要也不应该另外安装 Magisk。
-- **开机自启**：使用官方支持的 `boot-completed.d`；仍然默认关闭，必须在 App 内主动启用。
-- **首次解锁**：KernelSU 内置 BusyBox 不依赖 Termux 私有目录；手机重启后仍建议先解锁并确保 Ubuntu 数据可访问；开机脚本最多等待约 60 分钟。
-- **旧版迁移**：启用 v0.2 自启时，会删除标有 `# WHALE_CONTROLLER_MANAGED` 的 v0.1 同名 `service.d` 脚本，避免重复启动；不会删除其他开机脚本。
-- **守护与消息**：仍然只能确认端口和进程，不等于 QQ Hook、OneBot 消息同步已验证。建议先关闭 Termux 旧监控，再在 App 中开启新监控。
+| 文档 | 适用情况 | 可行性 / 验证状态 |
+| --- | --- | --- |
+| **[已 Root 安卓完整部署教程](docs/安卓Root部署大肥鱼QQAgent_完整教程.md)** | KernelSU / Root、Ubuntu ARM64 真 chroot | **已实测**：QQ 消息回复、控制台启动、最近任务隐藏和短时后台运行 |
+| **[Shizuku（ADB 授权）可行性分析与实验教程](docs/Shizuku_ADB授权部署QQAgent_可行性分析与实验教程.md)** | 无 Root，希望探索 Termux + PRoot | **实验性**：Shizuku 不能提供 Root 权限，SnowLuma 注入与完整收发链路尚未实测成功 |
 
-## 编译成 APK
+**Linux QQ 下载请认准官方入口：[QQ Linux 下载页](https://im.qq.com/index/#/linux)**。在网站内选择适合设备架构的 Linux ARM64（aarch64）安装包；该 URL 是网页地址，不是 `.deb` 文件直链。
 
-方式 A：在装有 Android Studio / Android SDK 35、JDK 17 的构建环境中打开本目录，同步项目并执行 `assembleDebug`。项目使用 Gradle 8.9 + Android Gradle Plugin 8.7.3。APK 输出位置：`app/build/outputs/apk/debug/app-debug.apk`。项目不附带 Gradle Wrapper JAR，需使用 Android Studio 安装的 Gradle 或系统 Gradle 8.9。
+> 建议：已经 Root 的手机先阅读第一篇；无 Root 设备先阅读第二篇的“可行性声明”，不要把 Shizuku 的 ADB 授权等同于 `su`/Root。
 
-方式 B（手机上通过 GitHub 构建，无需自己的电脑）：把**本源码项目**上传到你的 GitHub 仓库（不上传 QQ 配置、Token 或聊天记录），在仓库 Actions 页面选择 `Build 大肥鱼控制台 APK` 并点 Run workflow，完成后下载 Artifact 内的 `app-debug.apk` 安装。GitHub Actions 只负责构建 APK，大肥鱼运行时不依赖云服务器。
+## 📱 控制台功能
 
-注意：Debug APK 由构建环境签名，不适合作为公开分发的正式签名版；后续更新必须保持相同签名，否则需卸载旧 App（Root 脚本与 Ubuntu 数据不随 App 卸载而清空）。
+- **一键启动 / 停止**：复用 Ubuntu 中已有的 `/root/start-whale.sh` 和 `/root/stop-whale.sh`。
+- **运行状态检查**：查看 QQ 进程及 QQ Agent（3210）、SnowLuma（5099）、noVNC（6081）的基础健康状态。
+- **后台隐藏**：在「最近任务」中隐藏控制台自己的任务卡片；不会替其他应用隐藏卡片。
+- **Root 后台守护**：按健康检测结果尝试恢复服务；“手动停止”不会自动被守护重启。
+- **可选开机自启**：使用 KernelSU 的 `/data/adb/boot-completed.d/`；建议通过手动启停和锁屏测试后再开启。
+- **管理页面入口**：快捷打开本机 WebUI 和 noVNC。
 
-## 第一次打开
+**已经验证的范围**：Root + Ubuntu chroot 服务启动成功、QQ 实际收到并回复消息、控制台最近任务隐藏、约 6 分钟的短时后台运行。**尚不代表**已验证整夜稳定在线、每次重启自动恢复或断线消息补收。端口正常也不等于整个 OneBot/Hook 链路始终正常。
 
-1. 安装 APK，打开「大肥鱼控制台」。
-2. 在 KernelSU 管理器 → 超级用户中，仅向你自己构建、核对过的 APK 授予 Root。App 会把其管理脚本复制到 `/data/adb/whale-controller/controller.sh`，默认权限 0700。
-3. 先点「刷新运行状态」，确认 Root、chroot 路径正常，再点「启动大肥鱼」。
-4. 分别检查 6081、5099、3210 三个端口，并用另一个 QQ 账号做消息发送验证。
-5. 后台守护默认开启，但**只有点启动且存在 `wanted` 标志时才进行自动恢复**。手动停止将清除该标志，不会被守护再次启动。
-6. 「后台隐藏」只隐藏本 App 的最近任务卡片。仍可点桌面图标打开 App，不会隐藏 Termux 之前已打开的卡片。
-7. 「开机自启」默认关闭。建议完成冷启动和一键停止测试后再打开。使用 KernelSU 官方支持的 `/data/adb/boot-completed.d/` 开机脚本，不依赖 Magisk。首次开机需解锁手机以访问 Termux 数据。
+## 🛠️ 环境要求
 
-## 与原 Termux:Widget 守护器的关系（非常重要）
+- 已 Root 的 ARM64 安卓设备（此控制台按 **KernelSU** 部署编写）。
+- KernelSU 内置 BusyBox 可在 `/data/adb/ksu/bin/busybox` 运行。
+- 已部署的 Ubuntu ARM64 chroot：`/data/local/chroot/ubuntu`。
+- Ubuntu 内已有可用的 `/root/start-whale.sh` 与 `/root/stop-whale.sh`。
+- Ubuntu 中已安装并配置 Linux QQ、SnowLuma、QQ Agent。
 
-你此前安装的 Termux 启动包已经有一个每 120 秒轮询的 `~/.whale/watch.pid` 守护器。**不要同时运行两个守护器**。切换到本 App 前，在普通 Termux 内运行以下命令（无需 Root，勿在 Ubuntu 中执行）：
+> **注意**：本仓库提供控制台源码和教程，并非开箱即用的一体化安装包。部署顺序、路径说明和数据备份事项请以 [Root 完整教程](docs/安卓Root部署大肥鱼QQAgent_完整教程.md) 为准。
 
-```bash
-rm -f ~/.whale/boot-enabled
-touch ~/.whale/stop.flag
-if [ -f ~/.whale/watch.pid ]; then
-  PID=$(cat ~/.whale/watch.pid)
-  case "$PID" in *[!0-9]*|'') ;; *) kill -TERM "$PID" 2>/dev/null || true ;; esac
-fi
+## 📦 构建 APK
+
+本项目使用 **JDK 17、Gradle 8.9、Android Gradle Plugin 8.7.3、Android SDK 35**。已提供 GitHub Actions 自动构建配置。
+
+1. 打开仓库的 **[Actions](../../actions)**。
+2. 选择 **Build 大肥鱼控制台 APK**，可手动运行工作流；推送到 `main` 后也会触发。
+3. 构建成功后，在对应运行页面的 **Artifacts** 下载 `WhaleController-debug-apk`。
+4. 解压获得 `app-debug.apk`，安装到自己的安卓手机，并在 **KernelSU → 超级用户** 中核实后授予 Root 权限。
+5. 首先点击「刷新运行状态」，再测试启动、停止及真实 QQ 消息。**不要在首次测试时就打开开机自启。**
+
+Debug APK 的签名可能随构建环境变化。遇到签名不一致时需要处理旧应用的安装问题，但**不要删除 Ubuntu、Termux 或数据备份**。
+
+## 🔐 安全与运行边界
+
+- App 通过 `su -c` 调用 Root 脚本，拥有较高权限；安装前务必检查 [Root 控制脚本](app/src/main/assets/controller.sh)。
+- 当前脚本使用 **KernelSU 自带 BusyBox**（`/data/adb/ksu/bin/busybox`），不需要复制 Termux 私有目录中的 BusyBox 启动文件。
+- 旧的 Termux:Widget 守护器与本 App 的守护器不要同时运行，避免相互拉起服务。
+- 后台隐藏**不等于**绝对保活。部分系统可能停止后台进程；开机启动、QQ 登录状态、消息补收均需独立测试。
+- 不要提交 `data/config.json`、QQ 凭据、个人聊天日志、OneBot Token、API Key、加密备份密码或未脱敏的运行日志。
+- 所有第三方软件和服务遵循各自的许可与服务条款。
+
+## 🗂️ 仓库结构
+
+```text
+app/                              Android 控制台原生源码、Root 管理脚本
+.github/workflows/android-apk.yml  GitHub Actions APK 构建
+docs/                             Root 部署教程与 Shizuku 可行性研究
+docs/LICENSE.md                    文档的 CC BY-NC-SA 4.0 使用说明
+LICENSE                            控制台源码的 GPLv3 正式许可证文本
+README.md                          项目说明
 ```
 
-这只关闭 Termux 的旧监控，不卸载 Termux，也不删除 QQ Agent 的人格、插件、聊天和备份。随后才在本 App 中启用新的守护。
+仓库根目录保留的 `whale_android_controller_source_v0.1.zip` 是**早期历史源码包**，如需最新版本请以当前 `app/` 源码和 Actions 构建产物为准。
 
-## 服务恢复流程
+## ⚖️ 许可证与版权
 
-- **启动**：通过 Root 挂载 `/dev`、`/dev/pts`、`/proc`、`/sys` 到 chroot，然后调用已有的 `/root/start-whale.sh`。
-- **守护**：后台 Root shell 独立存在，不占用 Termux 最近任务卡片。每 90 秒检查；连续两次失败才调用既有脚本恢复。
-- **停止**：先取消“期望运行”状态、终止守护，再调用 `/root/stop-whale.sh`。不会主动删除持久数据。
-- **开机自启**：把受控脚本安装到 `/data/adb/boot-completed.d/99-whale-controller.sh`，由 KernelSU 在 boot completed 阶段执行。脚本等待 Termux 数据和 Ubuntu 可访问后再启动，最多等待约 60 分钟。
+本仓库**分开授权代码与教程**：
 
-## 重要局限
+- **控制台及原创程序源码**：**[GNU GPL-3.0-only](LICENSE)**。这是 OSI 承认的开源软件许可证，允许商业使用，但传播和修改必须满足 GPLv3 的相应义务。**不能据此主张“代码禁止商用”**。
+- **`docs/` 下两篇原创教程文字与编排**：**[CC BY-NC-SA 4.0](docs/LICENSE.md)**。要求署名、非商业使用、相同方式共享；商业用途请另行取得作者许可。它**不是开源软件许可证**，不用于限制程序源码。
+- **第三方组件、商标和引用资料**：由各自权利人及其原有许可证管理，以上授权均不覆盖第三方权利。
 
-- “后台隐藏”只影响该控制台的最近任务卡片，**不是内核级保活**，也不会隐藏 KernelSU 授权提示或系统可能要求的后台通知。
-- 守护只检测 Linux QQ 进程与三个 HTTP 端口，**不等于**确认 SnowLuma Hook、OneBot 与模型 API 全部成功。大肥鱼实际是否收发消息需单独测试。
-- 若系统强制杀掉 Root 进程，守护可能失效。Root / KernelSU 开机启动的兼容性取决于手机系统版本与 Root 方案。
-- QQ 已保存的聊天数据可以持久保留；离线时漏掉的消息是否补收，取决于 QQ、SnowLuma 和 Agent 的能力，不能保证。
-- 后台长期运行可能增加耗电与发热，建议定期观察运行情况。
-- 使用 Root shell 具有很高权限。请检查 `app/src/main/assets/controller.sh`，不要从陌生来源安装改过的 APK。
-- 尚未在 Redmi K90 Ultra 真机执行端到端测试，首次启动先验证 Root 和日志；**不要直接在生产号上盲目启用开机自启。**
+**© 2026 silent07137**。转载教程请注明作者和原始仓库链接，并保留原有版权声明、显式署名及溯源注释。
 
-## 目录
-
-- `app/src/main/java/cn/whale/controller/MainActivity.java`：独立原生 Android UI、后台隐藏与 Root 控制按钮。
-- `app/src/main/assets/controller.sh`：Root 控制、chroot、后台守护和 KernelSU 开机脚本。
-- `.github/workflows/android-apk.yml`：可在 GitHub Actions 构建 Debug APK。
-
-## 排错
-
-Root 管理脚本在 `/data/adb/whale-controller/`，日志在同目录 `watch.log` 和 `boot.log`。Ubuntu 的服务日志沿用你现有的 `/tmp/snowluma.log`、`/tmp/qqagent.log`。控制台页面提供「查看守护日志」按钮。
-
-如果页面显示 `su: inaccessible` 或 Root 权限被拒，请检查 KernelSU 是否向本 App 授权，不要把 Root 命令改成 Termux 前台执行来掩盖问题。
-
-## 卸载前清理
-
-先在 App 中关闭「开机自启」，点击「关闭大肥鱼」，然后再卸载 APK。**直接卸载 APK 不会自动删除 `/data/adb/boot-completed.d` 中由 KernelSU 安装的开机脚本**。需要手动清理时，先确认没有其他服务依赖该脚本，再在具有 Root 权限的终端执行：
-
-```sh
-su -c '/system/bin/sh /data/adb/whale-controller/controller.sh boot-off'
-su -c '/system/bin/sh /data/adb/whale-controller/controller.sh watch-off'
-```
-
-不要清理 `/data/local/chroot/ubuntu`，否则会破坏原有的大肥鱼环境。
+<!-- provenance-id: S07137-WHALE-REPO-README-20261025; author=silent07137; applies-to=README-only -->
