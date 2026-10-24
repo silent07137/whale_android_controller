@@ -10,7 +10,7 @@ BOOTFILE=/data/adb/boot-completed.d/99-whale-controller.sh
 # 仅用于清理本控制台 v0.1 可能遗留的旧版开机脚本。
 LEGACY_BOOTFILE=/data/adb/service.d/99-whale-controller.sh
 ROOTFS=/data/local/chroot/ubuntu
-BB=$STATE/busybox
+BB=/data/adb/ksu/bin/busybox
 
 error() { echo "ERROR: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || error '需要 Root 授权'
@@ -30,7 +30,7 @@ install() {
 }
 
 check_rootfs() {
-  [ -x "$BB" ] || error "缺少控制台专用 BusyBox：$BB。请从 Termux Root 终端复制到该路径"
+  [ -x "$BB" ] && "$BB" --help >/dev/null 2>&1 || error "KernelSU BusyBox 无法执行：$BB"
   [ -x "$ROOTFS/bin/bash" ] || error "缺少 Ubuntu chroot：$ROOTFS"
 }
 mounted() { grep -q " $1 " /proc/mounts; }
@@ -122,11 +122,12 @@ status() {
   # File visibility can differ between Termux's su shell and the controller
   # APK's KernelSU su shell (mount namespace and/or SELinux context).
   # Report each check separately instead of a misleading single NOT_FOUND.
+  echo "BUSYBOX_PATH=$BB"
   if [ -x "$BB" ] && "$BB" --help >/dev/null 2>&1; then
     echo 'BUSYBOX=ACCESSIBLE'
   else
     echo 'BUSYBOX=NOT_ACCESSIBLE'
-    echo 'BUSYBOX_INSTALL_HINT=Copy from Termux root shell to /data/adb/whale-controller/busybox'
+    echo 'BUSYBOX_INSTALL_HINT=Check KernelSU internal BusyBox at /data/adb/ksu/bin/busybox'
   fi
   if [ -x "$ROOTFS/bin/bash" ]; then
     echo 'UBUNTU_BASH=ACCESSIBLE'
@@ -137,7 +138,7 @@ status() {
     echo 'UBUNTU=NOT_ACCESSIBLE_FROM_APP'
     echo "ROOT_UID=$(id -u 2>/dev/null)"
     echo "ROOT_SELINUX_CONTEXT=$(id -Z 2>/dev/null || echo unknown)"
-    for p in /data/adb/whale-controller/busybox \
+    for p in /data/adb/ksu/bin/busybox \
              /data/local/chroot/ubuntu/bin/bash \
              /data/local/chroot/ubuntu/usr/bin/bash; do
       if [ -e "$p" ]; then
@@ -190,7 +191,7 @@ BASE=/data/adb/whale-controller
 # KernelSU boot-completed.d 仍可能先于用户解锁执行，
 # 等待 Termux 凭据加密存储解锁及 Ubuntu chroot 可用。
 i=0
-while [ ! -x "$BASE/busybox" ] || [ ! -x /data/local/chroot/ubuntu/bin/bash ]; do
+while [ ! -x /data/adb/ksu/bin/busybox ] || [ ! -x /data/local/chroot/ubuntu/bin/bash ]; do
   [ -f "$BASE/autoboot" ] || exit 0
   i=$((i + 1))
   if [ "$i" -ge 720 ]; then
