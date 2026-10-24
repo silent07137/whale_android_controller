@@ -119,8 +119,33 @@ status() {
   if [ -e "$STATE/watch-enabled" ]; then echo 'WATCH=ON'; else echo 'WATCH=OFF'; fi
   if watch_pid; then echo 'WATCH_PROCESS=RUNNING'; else echo 'WATCH_PROCESS=STOPPED'; fi
   if [ -e "$STATE/autoboot" ]; then echo 'AUTOBOOT=ON'; else echo 'AUTOBOOT=OFF'; fi
+  # File visibility can differ between Termux's su shell and the controller
+  # APK's KernelSU su shell (mount namespace and/or SELinux context).
+  # Report each check separately instead of a misleading single NOT_FOUND.
+  if [ -x "$BB" ]; then
+    echo 'BUSYBOX=ACCESSIBLE'
+  else
+    echo 'BUSYBOX=NOT_ACCESSIBLE'
+  fi
+  if [ -x "$ROOTFS/bin/bash" ]; then
+    echo 'UBUNTU_BASH=ACCESSIBLE'
+  else
+    echo 'UBUNTU_BASH=NOT_ACCESSIBLE'
+  fi
   if [ ! -x "$BB" ] || [ ! -x "$ROOTFS/bin/bash" ]; then
-    echo 'UBUNTU=NOT_FOUND'
+    echo 'UBUNTU=NOT_ACCESSIBLE_FROM_APP'
+    echo "ROOT_UID=$(id -u 2>/dev/null)"
+    echo "ROOT_SELINUX_CONTEXT=$(id -Z 2>/dev/null || echo unknown)"
+    for p in /data/data/com.termux/files/usr/bin/busybox \
+             /data/local/chroot/ubuntu/bin/bash \
+             /data/local/chroot/ubuntu/usr/bin/bash; do
+      if [ -e "$p" ]; then
+        echo "FILE_EXISTS=$p"
+      else
+        echo "FILE_MISSING_OR_INVISIBLE=$p"
+      fi
+      ls -ld "$p" 2>&1 || true
+    done
     return 1
   fi
   prepare
