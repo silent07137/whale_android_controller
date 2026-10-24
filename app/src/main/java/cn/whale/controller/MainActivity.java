@@ -194,7 +194,7 @@ public class MainActivity extends Activity {
     private Button button(String title, boolean primary) {
         Button button = new Button(this);
         button.setText(title);
-        button.setTextAllCaps(false);
+        button.setAllCaps(false);
         button.setTextColor(primary ? BG : WHITE);
         button.setTextSize(14);
         button.setGravity(Gravity.CENTER);
