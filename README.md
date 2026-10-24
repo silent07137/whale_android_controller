@@ -5,11 +5,7 @@
 ## 适用于你的部署
 
 - Android Root（已适配 KernelSU）；已安装 `/data/local/chroot/ubuntu`。
-- 从 Termux 已验证的 BusyBox 复制一份到 `/data/adb/whale-controller/busybox`，避免独立 APK 的 KernelSU mount namespace 无法访问 Termux 私有路径。首次部署执行：
-  ```sh
-  su -c 'mkdir -p /data/adb/whale-controller && chmod 700 /data/adb/whale-controller && cp /data/data/com.termux/files/usr/bin/busybox /data/adb/whale-controller/busybox && chmod 700 /data/adb/whale-controller/busybox && /data/adb/whale-controller/busybox --help >/dev/null && echo BUSYBOX_READY'
-  ```
-  如果原文件因 Root namespace 不可见，请先从 Termux 内运行上述命令，不要从 APK 内复制。
+- **使用 KernelSU 内置 BusyBox**：`/data/adb/ksu/bin/busybox`。不再从 Termux 私有路径复制：Termux 安装的 `busybox` 可能依赖 `libbusybox.so` 等运行库，仅复制小型可执行文件并不能保证独立运行。可在 Termux 普通终端核对 `su -c '/data/adb/ksu/bin/busybox --help >/dev/null && echo KSU_BUSYBOX_OK'`，无需改动原始 Ubuntu 环境。
 - Ubuntu 中已有经你验证的一键脚本 `/root/start-whale.sh`、`/root/stop-whale.sh`。
 - Linux QQ / SnowLuma / K0nd1us QQ Agent 0.4 均已部署。
 - App **不包含** QQ、SnowLuma、Agent、聊天数据、账号或 API Key。
@@ -18,7 +14,7 @@
 
 - **Root 授权**：应用使用 `su -c`，由 KernelSU 的「超级用户」页面授权该 APK，不需要也不应该另外安装 Magisk。
 - **开机自启**：使用官方支持的 `boot-completed.d`；仍然默认关闭，必须在 App 内主动启用。
-- **首次解锁**：Ubuntu 依赖的 Termux BusyBox 位于 `/data/data`。手机重启后必须完成首次解锁才能访问相关文件；脚本最多等待约 60 分钟。
+- **首次解锁**：KernelSU 内置 BusyBox 不依赖 Termux 私有目录；手机重启后仍建议先解锁并确保 Ubuntu 数据可访问；开机脚本最多等待约 60 分钟。
 - **旧版迁移**：启用 v0.2 自启时，会删除标有 `# WHALE_CONTROLLER_MANAGED` 的 v0.1 同名 `service.d` 脚本，避免重复启动；不会删除其他开机脚本。
 - **守护与消息**：仍然只能确认端口和进程，不等于 QQ Hook、OneBot 消息同步已验证。建议先关闭 Termux 旧监控，再在 App 中开启新监控。
 
