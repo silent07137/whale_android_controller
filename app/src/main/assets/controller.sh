@@ -1,0 +1,220 @@
+#!/system/bin/sh
+# 大肥鱼控制台 KernelSU Root 管理脚本。只能通过显式操作启动或关闭。
+# Android root 端运行，不会打开 Termux Activity。
+set -u
+umask 077
+STATE=/data/adb/whale-controller
+SELF="$STATE/controller.sh"
+# KernelSU 官方支持 boot-completed.d，在 Android 启动完成后执行。
+BOOTFILE=/data/adb/boot-completed.d/99-whale-controller.sh
+# 仅用于清理本控制台 v0.1 可能遗留的旧版开机脚本。
+LEGACY_BOOTFILE=/data/adb/service.d/99-whale-controller.sh
+ROOTFS=/data/local/chroot/ubuntu
+BB=/data/data/com.termux/files/usr/bin/busybox
+
+error() { echo "ERROR: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || error '需要 Root 授权'
+
+install() {
+  mkdir -p "$STATE" || error "无法创建 $STATE"
+  chmod 700 "$STATE"
+  [ -r "$0" ] || error '安装源文件无法读取'
+  # 如果正在运行稳定脚本，复制到临时位置后再原子替换。
+  cp "$0" "$STATE/controller.sh.new" || error '复制启动脚本失败'
+  chmod 700 "$STATE/controller.sh.new"
+  mv -f "$STATE/controller.sh.new" "$SELF"
+  if [ ! -e "$STATE/watch-configured" ]; then
+    touch "$STATE/watch-enabled" "$STATE/watch-configured"
+  fi
+  echo 'CONTROLLER_INSTALLED=1'
+}
+
+check_rootfs() {
+  [ -x "$BB" ] || error "缺少 BusyBox：$BB"
+  [ -x "$ROOTFS/bin/bash" ] || error "缺少 Ubuntu chroot：$ROOTFS"
+}
+mounted() { grep -q " $1 " /proc/mounts; }
+prepare() {
+  check_rootfs
+  mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" || error '准备目录失败'
+  mounted "$ROOTFS/dev" || "$BB" mount --bind /dev "$ROOTFS/dev" || error '挂载 /dev 失败'
+  mounted "$ROOTFS/dev/pts" || "$BB" mount --bind /dev/pts "$ROOTFS/dev/pts" || error '挂载 /dev/pts 失败'
+  mounted "$ROOTFS/proc" || "$BB" mount --bind /proc "$ROOTFS/proc" || error '挂载 /proc 失败'
+  mounted "$ROOTFS/sys" || "$BB" mount --bind /sys "$ROOTFS/sys" || error '挂载 /sys 失败'
+}
+ubuntu() {
+  "$BB" chroot "$ROOTFS" /usr/bin/env -i \
+    HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TERM=xterm-256color /bin/bash -c "$1"
+}
+watch_pid() {
+  [ -f "$STATE/watch.pid" ] || return 1
+  pid=$(cat "$STATE/watch.pid" 2>/dev/null) || return 1
+  case "$pid" in *[!0-9]*|'') return 1 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  # 避免由于 PID 复用误杀其他程序。
+  tr '\000' ' ' < "/proc/$pid/cmdline" | grep -q "controller.sh watch"
+}
+stop_watch() {
+  if watch_pid; then
+    pid=$(cat "$STATE/watch.pid")
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
+  rm -f "$STATE/watch.pid"
+}
+spawn_watch() {
+  [ -e "$STATE/watch-enabled" ] || return 0
+  watch_pid && return 0
+  # 所有标准流重定向，确保启动器 Activity 退出后仍独立运行。
+  "$BB" nohup /system/bin/sh "$SELF" watch \
+    </dev/null >>"$STATE/watch.log" 2>&1 &
+  echo $! > "$STATE/watch.pid"
+}
+start() {
+  prepare
+  [ -f "$ROOTFS/root/start-whale.sh" ] || error '找不到 /root/start-whale.sh'
+  touch "$STATE/wanted"
+  echo '正在启动现有 Ubuntu 服务……'
+  if ! ubuntu 'bash /root/start-whale.sh'; then
+    echo 'WARN: 启动脚本返回非零值，请查看日志' >&2
+  fi
+  spawn_watch
+  echo 'START_COMMAND_COMPLETED=1'
+}
+stop() {
+  rm -f "$STATE/wanted"
+  stop_watch
+  prepare
+  if [ -f "$ROOTFS/root/stop-whale.sh" ]; then
+    ubuntu 'bash /root/stop-whale.sh' || true
+  else
+    echo 'ERROR: 没找到 /root/stop-whale.sh，已停止守护但未关闭全部服务' >&2
+    exit 1
+  fi
+  echo 'STOP_COMMAND_COMPLETED=1'
+}
+health() {
+  # 返回 0 表示三个面板与 QQ 主进程均存在。
+  ubuntu '
+    fail=0
+    for p in 6081 5099 3210; do
+      if curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:$p/"; then
+        echo "PORT_$p=OK"
+      else
+        echo "PORT_$p=DOWN"
+        fail=1
+      fi
+    done
+    if pgrep -f "^/opt/QQ/qq( |$)" >/dev/null; then
+      echo "QQ_PROCESS=OK"
+    else
+      echo "QQ_PROCESS=DOWN"
+      fail=1
+    fi
+    exit "$fail"
+  '
+}
+status() {
+  if [ -e "$STATE/wanted" ]; then echo 'WANTED=ON'; else echo 'WANTED=OFF'; fi
+  if [ -e "$STATE/watch-enabled" ]; then echo 'WATCH=ON'; else echo 'WATCH=OFF'; fi
+  if watch_pid; then echo 'WATCH_PROCESS=RUNNING'; else echo 'WATCH_PROCESS=STOPPED'; fi
+  if [ -e "$STATE/autoboot" ]; then echo 'AUTOBOOT=ON'; else echo 'AUTOBOOT=OFF'; fi
+  if [ ! -x "$BB" ] || [ ! -x "$ROOTFS/bin/bash" ]; then
+    echo 'UBUNTU=NOT_FOUND'
+    return 1
+  fi
+  prepare
+  health
+}
+watch() {
+  trap 'exit 0' TERM INT
+  fails=0
+  echo "[$(date)] watchdog started"
+  while [ -e "$STATE/wanted" ] && [ -e "$STATE/watch-enabled" ]; do
+    sleep 90 & wait $! || exit 0
+    [ -e "$STATE/wanted" ] && [ -e "$STATE/watch-enabled" ] || break
+    if health >/dev/null 2>&1; then
+      fails=0
+    else
+      fails=$((fails + 1))
+      echo "[$(date)] health miss $fails/2"
+      if [ "$fails" -ge 2 ]; then
+        echo "[$(date)] restarting services"
+        start >> "$STATE/watch.log" 2>&1 || true
+        fails=0
+      fi
+    fi
+  done
+  echo "[$(date)] watchdog stopped"
+}
+write_boot() {
+  mkdir -p /data/adb/boot-completed.d || error '无法创建 KernelSU boot-completed.d 目录'
+  if [ -e "$BOOTFILE" ] && ! grep -q '^# WHALE_CONTROLLER_MANAGED$' "$BOOTFILE"; then
+    error "检测到同名非本程序开机脚本，拒绝覆盖：$BOOTFILE"
+  fi
+  # 清理本程序 v0.1 遗留的 service.d 脚本，避免重启后启动两次。
+  if [ -f "$LEGACY_BOOTFILE" ] && grep -q '^# WHALE_CONTROLLER_MANAGED$' "$LEGACY_BOOTFILE"; then
+    rm -f "$LEGACY_BOOTFILE"
+  fi
+  cat > "$BOOTFILE" <<'BOOT'
+#!/system/bin/sh
+# WHALE_CONTROLLER_MANAGED
+BASE=/data/adb/whale-controller
+[ -f "$BASE/autoboot" ] || exit 0
+# KernelSU boot-completed.d 仍可能先于用户解锁执行，
+# 等待 Termux 凭据加密存储解锁及 Ubuntu chroot 可用。
+i=0
+while [ ! -x /data/data/com.termux/files/usr/bin/busybox ] || [ ! -x /data/local/chroot/ubuntu/bin/bash ]; do
+  [ -f "$BASE/autoboot" ] || exit 0
+  i=$((i + 1))
+  if [ "$i" -ge 720 ]; then
+    echo "[$(date)] 等待用户解锁/文件可用超时，取消本次自动启动" >> "$BASE/boot.log"
+    exit 1
+  fi
+  sleep 5
+done
+[ -f "$BASE/autoboot" ] || exit 0
+exec /system/bin/sh "$BASE/controller.sh" start >> "$BASE/boot.log" 2>&1
+BOOT
+  chmod 700 "$BOOTFILE"
+}
+
+action=${1:-status}
+case "$action" in
+  install) install ;;
+  start) start ;;
+  stop) stop ;;
+  status) status ;;
+  watch) watch ;;
+  watch-on)
+    mkdir -p "$STATE"
+    touch "$STATE/watch-enabled"
+    [ -e "$STATE/wanted" ] && spawn_watch
+    echo 'WATCH=ON'
+    ;;
+  watch-off)
+    rm -f "$STATE/watch-enabled"
+    stop_watch
+    echo 'WATCH=OFF'
+    ;;
+  boot-on)
+    mkdir -p "$STATE"
+    write_boot
+    touch "$STATE/autoboot"
+    echo 'AUTOBOOT=ON'
+    ;;
+  boot-off)
+    rm -f "$STATE/autoboot"
+    if [ -e "$BOOTFILE" ] && grep -q '^# WHALE_CONTROLLER_MANAGED$' "$BOOTFILE"; then
+      rm -f "$BOOTFILE"
+    fi
+    if [ -e "$LEGACY_BOOTFILE" ] && grep -q '^# WHALE_CONTROLLER_MANAGED$' "$LEGACY_BOOTFILE"; then
+      rm -f "$LEGACY_BOOTFILE"
+    fi
+    echo 'AUTOBOOT=OFF'
+    ;;
+  logs)
+    tail -n 50 "$STATE/watch.log" 2>/dev/null || echo '暂无守护日志'
+    ;;
+  *) error '支持：install start stop status watch-on watch-off boot-on boot-off logs' ;;
+esac
