@@ -309,7 +309,7 @@ public class MainActivity extends Activity {
                 activityText.setText(lastOperation);
                 busy = false;
                 setControlsEnabled(true);
-                if (diaryUrl != null && response.startsWith("退出码 0\\n")) {
+                if (diaryUrl != null && response.startsWith("退出码 0\n")) {
                     open(diaryUrl);
                 }
                 if ("install".equals(action) && response.contains("CONTROLLER_INSTALLED=1")) execute("status");
