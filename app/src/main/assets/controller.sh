@@ -11,6 +11,8 @@ BOOTFILE=/data/adb/boot-completed.d/99-whale-controller.sh
 LEGACY_BOOTFILE=/data/adb/service.d/99-whale-controller.sh
 ROOTFS=/data/local/chroot/ubuntu
 BB=/data/adb/ksu/bin/busybox
+AGENT_DIR=/opt/whale/QQ-agent-K0nd1us/0.4
+DIARY_DIR=$AGENT_DIR/whale-diary
 
 error() { echo "ERROR: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || error '需要 Root 授权'
@@ -47,6 +49,62 @@ ubuntu() {
     HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     TERM=xterm-256color /bin/bash -c "$1"
 }
+# 探索日记是独立的只读服务；只使用 127.0.0.1 端口，不读取 QQ 凭据。
+diary_installed() {
+  [ -f "$ROOTFS$DIARY_DIR/server.py" ] && [ -f "$ROOTFS$DIARY_DIR/start.sh" ] && [ -f "$ROOTFS$DIARY_DIR/url.sh" ]
+}
+diary_probe() {
+  ubuntu 'curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:3222/health' >/dev/null 2>&1
+}
+diary_status() {
+  if diary_installed; then echo 'DIARY_INSTALLED=YES'; else echo 'DIARY_INSTALLED=NO'; fi
+  if diary_probe; then echo 'DIARY_PORT=OK'; else echo 'DIARY_PORT=DOWN'; fi
+  if [ -f "$STATE/diary-autostart" ]; then echo 'DIARY_AUTOSTART=ON'; else echo 'DIARY_AUTOSTART=OFF'; fi
+  for item in 'whale-explorer:EXPLORER_SKILL' 'whale-web-reader:WEB_READER_SKILL' 'video-watch:VIDEO_SKILL'; do
+    name=${item%%:*}
+    label=${item#*:}
+    if [ -f "$ROOTFS$AGENT_DIR/skills/$name/skill.json" ]; then
+      echo "$label=INSTALLED"
+    else
+      echo "$label=NOT_FOUND"
+    fi
+  done
+}
+diary_start() {
+  prepare
+  diary_installed || error '探索日记未安装，请先在 Ubuntu 中安装 whale-diary v0.1.1'
+  if ! diary_probe; then
+    # 原版 start.sh 在 /proc 未就绪时可能误判，因此以真实 HTTP 健康接口为准。
+    ubuntu "sh '$DIARY_DIR/start.sh' >/dev/null 2>&1" || true
+    i=0
+    while ! diary_probe; do
+      i=$((i + 1))
+      [ "$i" -lt 8 ] || error '探索日记启动失败；请查看日记日志'
+      sleep 1
+    done
+  fi
+  echo 'DIARY_RUNNING=YES'
+}
+diary_open() {
+  diary_start
+  url=$(ubuntu "sh '$DIARY_DIR/url.sh'") || error '探索日记访问密钥未就绪'
+  case "$url" in
+    http://127.0.0.1:3222/\#*) echo "DIARY_URL=$url" ;;
+    *) error '探索日记网址格式无效，拒绝打开非本机地址' ;;
+  esac
+}
+diary_stop() {
+  prepare
+  if ! diary_installed; then echo 'DIARY_RUNNING=NO'; return 0; fi
+  ubuntu "sh '$DIARY_DIR/stop.sh'" || error '无法停止探索日记，请查看日志'
+  echo 'DIARY_STOP_REQUESTED=YES'
+}
+summary() {
+  prepare
+  echo 'DEVICE_SUMMARY=ANDROID_HOST_MEMORY_AND_ROOTFS_STORAGE'
+  ubuntu 'awk "/MemTotal:/ {total=int(\$2/1024)} /MemAvailable:/ {free=int(\$2/1024)} END {printf \"TOTAL_RAM_MB=%d\\nAVAILABLE_RAM_MB=%d\\n\",total,free}" /proc/meminfo'
+  ubuntu 'df -h / | tail -n 1' | while IFS= read -r line; do echo "ROOTFS_DISK=$line"; done
+}
 watch_pid() {
   [ -f "$STATE/watch.pid" ] || return 1
   pid=$(cat "$STATE/watch.pid" 2>/dev/null) || return 1
@@ -77,6 +135,9 @@ start() {
   echo '正在启动现有 Ubuntu 服务……'
   if ! ubuntu 'bash /root/start-whale.sh'; then
     echo 'WARN: 启动脚本返回非零值，请查看日志' >&2
+  fi
+  if [ -f "$STATE/diary-autostart" ]; then
+    diary_start || echo 'WARN: 探索日记自动启动失败，主服务不受影响' >&2
   fi
   spawn_watch
   echo 'START_COMMAND_COMPLETED=1'
@@ -152,6 +213,9 @@ status() {
   fi
   prepare
   health
+  health_rc=$?
+  diary_status
+  return "$health_rc"
 }
 watch() {
   trap 'exit 0' TERM INT
@@ -243,5 +307,20 @@ case "$action" in
   logs)
     tail -n 50 "$STATE/watch.log" 2>/dev/null || echo '暂无守护日志'
     ;;
-  *) error '支持：install start stop status watch-on watch-off boot-on boot-off logs' ;;
+  logs-boot)
+    tail -n 60 "$STATE/boot.log" 2>/dev/null || echo '暂无开机日志'
+    ;;
+  logs-diary)
+    tail -n 50 "$ROOTFS$DIARY_DIR/server.log" 2>/dev/null || echo '暂无探索日记日志'
+    ;;
+  summary) summary ;;
+  diary-status) prepare; diary_status ;;
+  diary-open) diary_open ;;
+  diary-start) diary_start ;;
+  diary-stop) diary_stop ;;
+  diary-auto-on)
+    mkdir -p "$STATE"; touch "$STATE/diary-autostart"; echo 'DIARY_AUTOSTART=ON' ;;
+  diary-auto-off)
+    rm -f "$STATE/diary-autostart"; echo 'DIARY_AUTOSTART=OFF' ;;
+  *) error '支持：install start stop status watch-on watch-off boot-on boot-off logs summary diary-open diary-start diary-stop diary-auto-on diary-auto-off logs-diary logs-boot' ;;
 esac
