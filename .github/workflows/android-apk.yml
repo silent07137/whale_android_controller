@@ -31,6 +31,8 @@ jobs:
           test -n "$SDKMANAGER" && test -x "$SDKMANAGER"
           echo "Using SDK manager: $SDKMANAGER"
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Validate KernelSU controller script
+        run: sh -n app/src/main/assets/controller.sh
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
