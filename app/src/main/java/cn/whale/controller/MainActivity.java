@@ -41,13 +41,18 @@ public class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private LinearLayout body;
     private TextView statusText;
+    private TextView overviewText;
     private TextView activityText;
     private Switch hideToggle;
     private Switch guardToggle;
     private Switch bootToggle;
+    private Switch diaryAutoToggle;
     private Button startButton;
     private Button stopButton;
     private Button refreshButton;
+    private Button diaryButton;
+    private Button diaryStopButton;
+    private Button summaryButton;
     private boolean syncing = false;
     private boolean busy = false;
     private String lastOperation = "尚未执行操作";
@@ -77,6 +82,9 @@ public class MainActivity extends Activity {
         bootToggle.setOnCheckedChangeListener((button, value) -> {
             if (!syncing) execute(value ? "boot-on" : "boot-off");
         });
+        diaryAutoToggle.setOnCheckedChangeListener((button, value) -> {
+            if (!syncing) execute(value ? "diary-auto-on" : "diary-auto-off");
+        });
         execute("install");
     }
 
@@ -103,7 +111,10 @@ public class MainActivity extends Activity {
 
         LinearLayout statusBox = panel();
         statusBox.addView(text("运行状态", 17, GOLD, true));
-        statusText = text("正在连接 Root 控制层……", 14, WHITE, false);
+        overviewText = text("正在检测主服务与探索日记……", 15, BLUE, true);
+        overviewText.setPadding(0, dp(9), 0, dp(2));
+        statusBox.addView(overviewText);
+        statusText = text("正在连接 Root 控制层……", 13, WHITE, false);
         statusText.setLineSpacing(dp(3), 1.0f);
         statusText.setPadding(0, dp(12), 0, 0);
         statusBox.addView(statusText);
@@ -133,6 +144,9 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
+        diaryAutoToggle = new Switch(this);
+        setupSwitch(diaryAutoToggle, "探索日记随大肥鱼启动（可选）");
+        options.addView(diaryAutoToggle);
         TextView note = text("隐藏最近任务 ≠ 永久保活。守护脚本在 Root 后台运行，不会打开 Termux 窗口。启动和停止保留手动控制；不能保证断线期间的消息全部补收。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
@@ -147,7 +161,39 @@ public class MainActivity extends Activity {
         snow.setOnClickListener(v -> open("http://127.0.0.1:5099"));
         vnc.setOnClickListener(v -> open("http://127.0.0.1:6081/vnc.html"));
         browser.addView(qq); browser.addView(snow); browser.addView(vnc);
+        TextView hint = text("网页阅读与视频识读是 QQ Agent 内的技能，请在 QQ Agent → 技能 中使用；本 App 不会启用已崩溃的 WebKitWebDriver。", 12, MUTED, false);
+        hint.setPadding(0, dp(9), 0, 0);
+        browser.addView(hint);
         body.addView(browser);
+
+        LinearLayout diary = panel();
+        diary.addView(text("🧭 自主探索中心", 17, GOLD, true));
+        TextView diaryNote = text("管理独立的只读日记面板（本机 3222）。一键启动后自动打开带访问密钥的页面；URL 不在控制台日志中展示。", 12, MUTED, false);
+        diaryNote.setPadding(0, dp(8), 0, dp(4));
+        diary.addView(diaryNote);
+        diaryButton = button("打开／启动探索日记", true);
+        diaryStopButton = button("仅停止探索日记", false);
+        diaryButton.setOnClickListener(v -> execute("diary-open"));
+        diaryStopButton.setOnClickListener(v -> execute("diary-stop"));
+        diary.addView(diaryButton);
+        diary.addView(diaryStopButton);
+        Button diaryLog = button("查看日记服务日志", false);
+        diaryLog.setOnClickListener(v -> execute("logs-diary"));
+        diary.addView(diaryLog);
+        body.addView(diary);
+
+        LinearLayout diagnostics = panel();
+        diagnostics.addView(text("🔎 快速诊断", 17, GOLD, true));
+        TextView diagNote = text("只查看设备总内存、存储空间和服务日志，不读取 QQ 聊天内容，不会重启后台。", 12, MUTED, false);
+        diagNote.setPadding(0, dp(9), 0, 0);
+        diagnostics.addView(diagNote);
+        summaryButton = button("查看内存与空间", false);
+        summaryButton.setOnClickListener(v -> execute("summary"));
+        diagnostics.addView(summaryButton);
+        Button bootLog = button("查看开机启动日志", false);
+        bootLog.setOnClickListener(v -> execute("logs-boot"));
+        diagnostics.addView(bootLog);
+        body.addView(diagnostics);
 
         LinearLayout output = panel();
         output.addView(text("最近操作", 17, GOLD, true));
@@ -254,29 +300,56 @@ public class MainActivity extends Activity {
             }
             final String response = result;
             runOnUiThread(() -> {
-                // Keep the actual Start/Stop/Root error visible. A subsequent automatic
-                // status check must not overwrite the preceding operation output.
+                // 只把日记密钥传入本机浏览器，绝不能在“最近操作”中明文显示。
+                String diaryUrl = "diary-open".equals(action) ? extractDiaryUrl(response) : null;
+                String safeResponse = response.replaceAll("(?m)^DIARY_URL=.*$", "DIARY_URL=（已隐藏，仅在浏览器中打开）");
                 if (!"status".equals(action)) {
-                    lastOperation = "操作：" + action + "\n" + response;
+                    lastOperation = "操作：" + action + "\n" + safeResponse;
                 }
                 activityText.setText(lastOperation);
                 busy = false;
                 setControlsEnabled(true);
+                if (diaryUrl != null && response.startsWith("退出码 0\\n")) {
+                    open(diaryUrl);
+                }
                 if ("install".equals(action) && response.contains("CONTROLLER_INSTALLED=1")) execute("status");
-                else if (!"logs".equals(action) && !"status".equals(action) &&
+                else if (!"logs".equals(action) && !action.startsWith("logs-") &&
+                        !"status".equals(action) && !"summary".equals(action) &&
                         !"install".equals(action)) execute("status");
                 else if ("status".equals(action)) parseStatus(response);
             });
         });
     }
 
+    private String extractDiaryUrl(String output) {
+        for (String line : output.split("\\r?\\n")) {
+            if (line.startsWith("DIARY_URL=")) {
+                String url = line.substring("DIARY_URL=".length()).trim();
+                if (url.matches("http://127\\.0\\.0\\.1:3222/#[A-Za-z0-9_-]{24,120}")) {
+                    return url;
+                }
+            }
+        }
+        return null;
+    }
+
     private void parseStatus(String result) {
         statusText.setText(result.replace("退出码 0\n", ""));
+        boolean mainReady = result.contains("PORT_6081=OK") &&
+                result.contains("PORT_5099=OK") && result.contains("PORT_3210=OK") &&
+                result.contains("QQ_PROCESS=OK");
+        boolean diaryUp = result.contains("DIARY_PORT=OK");
+        String text = mainReady ? "● 大肥鱼主服务运行中" : "● 主服务有项目未就绪";
+        text += diaryUp ? "  ·  探索日记在线" : "  ·  探索日记未启动";
+        overviewText.setText(text);
         syncing = true;
         if (result.contains("WATCH=ON")) guardToggle.setChecked(true);
         else if (result.contains("WATCH=OFF")) guardToggle.setChecked(false);
         if (result.contains("AUTOBOOT=ON")) bootToggle.setChecked(true);
         else if (result.contains("AUTOBOOT=OFF")) bootToggle.setChecked(false);
+        if (result.contains("DIARY_AUTOSTART=ON")) diaryAutoToggle.setChecked(true);
+        else if (result.contains("DIARY_AUTOSTART=OFF")) diaryAutoToggle.setChecked(false);
+        if (diaryButton != null) diaryButton.setEnabled(result.contains("DIARY_INSTALLED=YES"));
         syncing = false;
     }
 
@@ -284,6 +357,10 @@ public class MainActivity extends Activity {
         if (startButton != null) startButton.setEnabled(enabled);
         if (stopButton != null) stopButton.setEnabled(enabled);
         if (refreshButton != null) refreshButton.setEnabled(enabled);
+        if (summaryButton != null) summaryButton.setEnabled(enabled);
+        if (diaryButton != null) diaryButton.setEnabled(enabled &&
+                statusText != null && statusText.getText().toString().contains("DIARY_INSTALLED=YES"));
+        if (diaryStopButton != null) diaryStopButton.setEnabled(enabled);
     }
 
     private void writeAsset() throws Exception {
