@@ -36,7 +36,7 @@ jobs:
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: SmallWhale-QQAgentPlus-v0.1.0-debug-apk
+          name: SmallWhale-QQAgentPlus-v0.1.1-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 21
