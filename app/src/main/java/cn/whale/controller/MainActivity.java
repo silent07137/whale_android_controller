@@ -104,6 +104,7 @@ public final class MainActivity extends Activity {
         button(actions, "启动小鲸鱼", true, "start");
         button(actions, "正常停止", false, "stop");
         button(actions, "刷新运行状态", false, "status");
+        button(actions, "重新检查 KernelSU 授权", false, "install");
 
         LinearLayout background = card(body, "后台与开机");
         watchToggle = option(background, "后台守护（每 120 秒检测，最多恢复 3 次）");
@@ -235,6 +236,8 @@ public final class MainActivity extends Activity {
                 } else {
                     call = "/system/bin/sh /data/adb/qqaplus-controller/controller.sh " + action;
                 }
+                // KernelSU 只向获准应用开放 su；未经手动授权时，execve 可能直接 EACCES。
+                // 不修改 SELinux/su 权限，不在此使用其它应用的 Root 权限。
                 Process process = new ProcessBuilder("su", "-c", call)
                         .redirectErrorStream(true).start();
                 boolean completed = process.waitFor(55, TimeUnit.SECONDS);
@@ -247,7 +250,18 @@ public final class MainActivity extends Activity {
                             new String(outputBytes, StandardCharsets.UTF_8);
                 }
             } catch (Exception e) {
-                result = "执行失败：" + e;
+                String description = String.valueOf(e.getMessage());
+                if (description.contains("Cannot run program \"su\"") &&
+                        description.contains("Permission denied")) {
+                    result = "ROOT_PERMISSION_DENIED=YES\n" +
+                        "KernelSU 尚未允许本应用调用 su。\n" +
+                        "请在 KernelSU → 超级用户中，找到「小鲸鱼控制台」\n" +
+                        "（cn.whale.qqaplus.controller），手动开启 Root。\n" +
+                        "然后返回本页点击「重新检查 KernelSU 授权」。\n" +
+                        "无需重装 Ubuntu，也不要更改 SELinux 或 su 文件权限。";
+                } else {
+                    result = "执行失败：" + e;
+                }
             }
             final String safe = redact(result);
             runOnUiThread(() -> {
@@ -256,7 +270,10 @@ public final class MainActivity extends Activity {
                 for (Button button : commands) button.setEnabled(true);
                 if (watchToggle != null) watchToggle.setEnabled(true);
                 if (bootToggle != null) bootToggle.setEnabled(true);
-                if ("status".equals(action)) applyStatus(safe);
+                if (safe.contains("ROOT_PERMISSION_DENIED=YES")) {
+                    summary.setText("● 需要在 KernelSU 授予 Root");
+                    details.setText("小鲸鱼控制台尚无 Root 授权。请先授权，再点击「重新检查 KernelSU 授权」。");
+                } else if ("status".equals(action)) applyStatus(safe);
                 else if ("install".equals(action) && safe.contains("INSTALLED=YES")) runCommand("status");
                 else if (!action.startsWith("log-")) runCommand("status");
             });
@@ -268,6 +285,11 @@ public final class MainActivity extends Activity {
             .replaceAll("sk-[A-Za-z0-9_-]{8,}", "sk-[已隐藏]");
     }
     private void applyStatus(String result) {
+        if (result.contains("ROOT_PERMISSION_DENIED=YES")) {
+            summary.setText("● 需要在 KernelSU 授予 Root");
+            details.setText("请在 KernelSU → 超级用户中允许 cn.whale.qqaplus.controller，随后重新检查。");
+            return;
+        }
         details.setText(result.replace("退出码：0\n", ""));
         boolean agent = result.contains("AGENT=UP");
         boolean snow = result.contains("SNOWLUMA=UP");
