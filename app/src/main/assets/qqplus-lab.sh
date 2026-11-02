@@ -10,13 +10,14 @@ mkdir -p "$LOG" "$QQHOME/.config" "$QQHOME/.cache" "$QQHOME/.local/share" "$QQHO
 chmod 700 "$QQHOME" "$QQHOME/.runtime"
 error() { echo "ERROR: $*" >&2; exit 1; }
 tcp() { timeout 2 bash -c ":</dev/tcp/127.0.0.1/$1" >/dev/null 2>&1; }
-env_has() { tr '\000' '\n' < "/proc/$1/environ" 2>/dev/null | grep -Fxq "$2"; }
+env_has() { cat "/proc/$1/environ" 2>/dev/null | tr '\000' '\n' | grep -Fxq "$2"; }
 find_owned() {
   local kind="$1" f pid cmd cwd
   for f in /proc/[0-9]*/cmdline; do
-    pid=$(basename "$(dirname "$f")")
+    pid="${f#/proc/}"; pid="${pid%/cmdline}"
     [ "$pid" != "$$" ] || continue
-    cmd=$(tr '\000' ' ' < "$f" 2>/dev/null) || continue
+    # /proc 中的进程可能恰好退出：将读取错误静默处理，不作为服务故障。
+    cmd=$(cat "$f" 2>/dev/null | tr '\000' ' ') || continue
     [ -n "$cmd" ] || continue
     case "$kind" in
       agent) case "$cmd" in *src/server.js*) env_has "$pid" "QQ_AGENT_DATA_DIR=$LAB/data" && echo "$pid";; esac ;;
