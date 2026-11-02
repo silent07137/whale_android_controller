@@ -1,4 +1,4 @@
-# 小鲸鱼控制台（QQAgentPlus）· Android APK v0.1.1
+# 小鲸鱼控制台（QQAgentPlus）· Android APK v0.1.2
 
 这是在旧「大肥鱼控制台」源码基础上制作的**独立安卓 App**。注意：该功能分支不应直接覆盖旧 App。新的 applicationId 是 cn.whale.qqaplus.controller，与原来的 cn.whale.controller 同时安装。
 
@@ -27,7 +27,7 @@
 
 ## 构建 / 获取 APK
 
-前往本仓库 GitHub Actions，选择名称为 “Build 小鲸鱼 QQAgentPlus Controller APK” 的运行，下载其中的 “SmallWhale-QQAgentPlus-v0.1.1-debug-apk” artifact，并解压安装 app-debug.apk。
+前往本仓库 GitHub Actions，选择名称为 “Build 小鲸鱼 QQAgentPlus Controller APK” 的运行，下载其中的 “SmallWhale-QQAgentPlus-v0.1.2-debug-apk” artifact，并解压安装 app-debug.apk。
 
 该工作流由 feature/qqagentplus-controller 分支的 Push 触发。不需要修改 XiAgent Mobile 项目。
 
@@ -62,7 +62,7 @@ Android 包名：cn.whale.qqaplus.controller；Root 状态目录：/data/adb/qqa
 
 此分支仅为实验预览，不代表 SnowLuma、QQAgentPlus、QQ 或腾讯官方支持。
 
-## v0.1.1 Root 权限错误提示
+## v0.1.2 Root 权限错误提示
 
 如果看到 `Cannot run program "su": error=13, Permission denied`，先到 KernelSU → 超级用户，将 `cn.whale.qqaplus.controller` 设为允许。KernelSU 不会自动继承其他 App 的 Root 授权。回来点击「重新检查 KernelSU 授权」，不需要修改 `su` 文件权限、SELinux 或重装 Ubuntu。
 
