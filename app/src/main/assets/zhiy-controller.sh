@@ -63,8 +63,11 @@ legacy_active() {
 launch_maibot() {
   maibot_ok && { echo 'MAIBOT=ALREADY_RUNNING'; return 0; }
   owned && { echo 'MAIBOT=OWNED_PROCESS_WAITING'; return 0; }
-  [ -d "$ROOTFS$MAIBOT_DIR" ] || fail "找不到 MaiBot 目录：$MAIBOT_DIR"
-  [ -x "$ROOTFS$MAIBOT_BIN" ] || fail "找不到 MaiBot 命令：$MAIBOT_BIN"
+  # uv tool creates a symlink which may be absolute inside the guest.
+  # A host-side -x on ROOTFS/path follows that link in Android's root namespace,
+  # and can incorrectly report that the executable is missing.
+  ubuntu "test -d '$MAIBOT_DIR'" || fail "Ubuntu 中找不到 MaiBot 目录：$MAIBOT_DIR"
+  ubuntu "test -x '$MAIBOT_BIN'" || fail "Ubuntu 中无法执行 MaiBot：$MAIBOT_BIN"
   "$BB" nohup "$BB" chroot "$ROOTFS" /usr/bin/env -i HOME=/root \
     PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     TERM=xterm-256color /bin/bash -lc \
