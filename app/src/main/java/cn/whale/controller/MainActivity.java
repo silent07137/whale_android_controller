@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
         scroll.addView(body);
         setContentView(scroll);
 
-        TextView title = text("🐋  知遥控制台", 25, WHITE, true);
+        TextView title = text("🌙  知遥控制台", 25, WHITE, true);
         body.addView(title);
         TextView subtitle = text("MaiBot · SnowLuma · KernelSU Root", 12, MUTED, false);
         subtitle.setPadding(0, dp(7), 0, dp(15));
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
         LinearLayout controls = panel();
         controls.addView(text("快捷操作", 17, GOLD, true));
         startButton = button("启动知遥", true);
-        stopButton = button("关闭知遥", false);
+        stopButton = button("停止知遥服务", false);
         refreshButton = button("刷新运行状态", false);
         controls.addView(startButton);
         controls.addView(stopButton);
@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
-        TextView note = text("Termux 不必保持打开。新版只管理 MaiBot；已运行的 SnowLuma 和 Linux QQ 会复用，不会重复启动或被停止。要实现完整开机自启，还需配置它们的独立启动方式。", 12, MUTED, false);
+        TextView note = text("Termux 不必保持打开。Root 将按显示环境 → SnowLuma → QQ → MaiBot 的顺序启动；停止时只结束由本控制台启动的服务，避免误杀其他进程。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
         body.addView(options);
