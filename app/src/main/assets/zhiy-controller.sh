@@ -86,7 +86,25 @@ watch_alive() {
   case "$pid" in ''|*[!0-9]*) return 1;; esac
   [ -n "$token" ] && [ "$(stamp "$pid")" = "$token" ] && kill -0 "$pid" 2>/dev/null
 }
-watch_stop() {
+watch_stop_qq_stack() {
+  # 只停止由知遥启动器启动并记录 PID 与进程开始时间的进程。
+  ubuntu "$(cat <<'GUEST'
+for key in qq snow; do
+  file="/root/.zhiy-runtime/$key.pid"
+  [ -f "$file" ] || { echo "$key=EXTERNAL_OR_STOPPED"; continue; }
+  read -r pid stamp < "$file" || true
+  case "$pid" in ''|*[!0-9]*) rm -f "$file"; continue;; esac
+  if [ -n "$stamp" ] && [ -r "/proc/$pid/stat" ] &&
+     [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$stamp" ]; then
+    kill -TERM "$pid" 2>/dev/null || true
+    echo "$key=STOP_REQUESTED"
+  else echo "$key=NOT_OWNED"; fi
+  rm -f "$file"
+done
+GUEST
+)"
+}
+stop() {
   if watch_alive; then
     read -r pid token < "$STATE/watch.pid"
     kill -TERM "$pid" 2>/dev/null || true
@@ -187,6 +205,11 @@ if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
 elif [ -x /opt/QQ/qq ]; then
   nohup /opt/QQ/qq --no-sandbox --disable-gpu --disable-dev-shm-usage \
     >/tmp/zhiy-linuxqq.log 2>&1 &
+  qq_pid=$!
+  qq_stamp=$(awk '{print $22}' "/proc/$qq_pid/stat" 2>/dev/null || true)
+  if [ -n "$qq_stamp" ]; then
+    echo "$qq_pid $qq_stamp" >/root/.zhiy-runtime/qq.pid
+  fi
   echo "QQ=START_REQUESTED"
 else
   echo "WARN=QQ_binary_missing"
@@ -215,7 +238,8 @@ stop() {
     echo 'MAIBOT=EXTERNAL_OR_NOT_RUNNING'
   fi
   rm -f "$STATE/maibot.pid"
-  echo 'SNOWLUMA_AND_QQ=UNCHANGED'
+  prepare
+  stop_qq_stack || echo 'WARN=QQ_STACK_STOP_PARTIAL'
   echo 'STOP_COMMAND_COMPLETED=1'
 }
 health() {
