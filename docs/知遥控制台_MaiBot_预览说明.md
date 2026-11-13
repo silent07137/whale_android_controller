@@ -13,13 +13,17 @@
 
 ## 当前限制（务必看）
 
-**本预览版不保证在手机重启后自动拉起 Linux QQ 和 SnowLuma。**
-因为这两个服务在每台设备的实际启动方式、登录态、DISPLAY、noVNC 以及脚本路径可能不同。
-目前仅在服务已在线时复用它们，同时由 Root 启动 MaiBot；因此开机自启开关**只完整覆盖 MaiBot**。
+**v0.1.2 已加入单独的完整冷启动链路**：Xvfb → Fluxbox → VNC/noVNC → SnowLuma → Linux QQ → MaiBot。不会运行旧 `start-whale.sh` 或旧 QQAgent 程序。
 
-要做真正的一键启动/关停全部三个服务，还需要对照手机上现有的启动命令，单独迁移 QQ 与 SnowLuma，避免碰到旧 QQAgent。
+- SnowLuma 优先从 `/root/qqagentplus-lab/snowluma-new` 寻找 `index.mjs`，回退到 `/opt/whale/snowluma`。
+- Linux QQ：`DISPLAY=:1 /opt/QQ/qq --no-sandbox --disable-gpu --disable-dev-shm-usage`。
+- 启动前检查已有进程，复用运行中的组件。启动器自己启动的 SnowLuma、QQ 记录 PID 与进程起始时间，停止时仅处理自己拥有的进程。
+- 旧大肥鱼守护/开机自启标记仍存在时阻止新版启动，避免旧 QQAgent 被拉起。
+- 后台守护每 90 秒检查所有关键服务，连续两次未通过尝试恢复。
 
-**重要：** 新 App 的「停止知遥」只停止由新控制台启动的 MaiBot，不会误杀已运行的 QQ 或 SnowLuma。如果 MaiBot 是外部手工启动的，也不会强行停止。
+**仍未真机验收**：首次冷启动及重启后能否复用 QQ 登录态、SnowLuma Hook 是否注入、OneBot 是否能真实收发，都需要手机测试。App 显示端口在线不代表 QQ 协议已经正常工作。
+
+**安全提醒**：不自动创建 VNC 密码。若 VNC 密码文件不存在，会跳过 VNC 启动；Root QQ 运行使用 `--no-sandbox` 是旧部署的兼容参数，不应在不可信环境随意扩展。
 
 ## 使用前确认
 
@@ -39,8 +43,8 @@
 2. 安装知遥控制台 APK，在 KernelSU 授权 Root。
 3. 打开后先点「刷新运行状态」，核对 MaiBot / SnowLuma / QQ 状态。
 4. 点「启动知遥」，测试 WebUI 和 QQ 私聊。
-5. 点「关闭知遥」，确认只有由新控制台拉起的 MaiBot 被停止，SnowLuma 与 QQ 不受影响。
-6. 再启用后台守护，做锁屏测试。开机自启应在核对 Linux QQ 和 SnowLuma 独立启动流程后启用。
+5. 点「停止知遥服务」，确认由新控制台启动的 MaiBot、SnowLuma 和 QQ 能关闭，外部已有实例不会被误杀。
+6. 再启用后台守护，做锁屏测试；确认真实 QQ 消息收发、登录态保存后，才打开开机自启并验收重启恢复。
 
 ## 诊断
 
