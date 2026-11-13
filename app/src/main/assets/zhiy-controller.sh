@@ -56,8 +56,9 @@ owned() {
   [ -n "$token" ] && [ "$(stamp "$pid")" = "$token" ] && kill -0 "$pid" 2>/dev/null
 }
 legacy_active() {
-  [ -e /data/adb/whale-controller/wanted ] &&
-  [ -e /data/adb/whale-controller/watch-enabled ]
+  [ -e /data/adb/whale-controller/autoboot ] ||
+  { [ -e /data/adb/whale-controller/wanted ] &&
+    [ -e /data/adb/whale-controller/watch-enabled ]; }
 }
 launch_maibot() {
   maibot_ok && { echo 'MAIBOT=ALREADY_RUNNING'; return 0; }
@@ -101,8 +102,22 @@ start() {
   legacy_active && fail '旧大肥鱼后台守护仍在启用，请先关闭旧守护，避免 QQAgent 被重新启动'
   touch "$STATE/wanted"
   # 复用现有 SnowLuma、Linux QQ，避免重复登录和连接冲突。
-  if snow_ok; then echo 'SNOWLUMA=EXISTING'; else echo 'SNOWLUMA=NOT_RUNNING_NEEDS_SEPARATE_START'; fi
-  if qq_ok; then echo 'QQ=EXISTING'; else echo 'QQ=NOT_RUNNING_NEEDS_SEPARATE_START'; fi
+  if qq_ok; then
+    echo 'QQ=EXISTING'
+  elif [ -f "$ROOTFS/root/start-zhiy-qq.sh" ]; then
+    ubuntu 'bash /root/start-zhiy-qq.sh' || echo 'WARN: QQ 启动脚本失败'
+    echo 'QQ=START_REQUESTED'
+  else
+    echo 'QQ=NOT_RUNNING_NEEDS_SEPARATE_START'
+  fi
+  if snow_ok; then
+    echo 'SNOWLUMA=EXISTING'
+  elif [ -f "$ROOTFS/root/start-zhiy-snowluma.sh" ]; then
+    ubuntu 'bash /root/start-zhiy-snowluma.sh' || echo 'WARN: SnowLuma 启动脚本失败'
+    echo 'SNOWLUMA=START_REQUESTED'
+  else
+    echo 'SNOWLUMA=NOT_RUNNING_NEEDS_SEPARATE_START'
+  fi
   launch_maibot
   watch_start
   echo 'START_COMMAND_COMPLETED=1'
