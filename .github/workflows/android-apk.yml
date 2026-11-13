@@ -1,6 +1,8 @@
-name: Build 大肥鱼控制台 APK
+name: Build 知遥控制台 APK
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
@@ -32,11 +34,11 @@ jobs:
           echo "Using SDK manager: $SDKMANAGER"
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Validate KernelSU controller script
-        run: sh -n app/src/main/assets/controller.sh
+        run: sh -n app/src/main/assets/zhiy-controller.sh
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WhaleController-debug-apk
+          name: ZhiyController-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
