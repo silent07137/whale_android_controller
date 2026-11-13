@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
                 activityText.setText(lastOperation);
                 busy = false;
                 setControlsEnabled(true);
-                if ("install".equals(action) && response.contains("CONTROLLER_INSTALLED=1")) execute("status");
+                if ("install".equals(action) && response.contains("INSTALLED=YES")) execute("status");
                 else if (!"logs".equals(action) && !action.startsWith("logs-") &&
                         !"status".equals(action) && !"summary".equals(action) &&
                         !"install".equals(action)) execute("status");
@@ -314,7 +314,7 @@ public class MainActivity extends Activity {
         if (stopButton != null) stopButton.setEnabled(enabled);
         if (refreshButton != null) refreshButton.setEnabled(enabled);
         if (summaryButton != null) summaryButton.setEnabled(enabled);
-                statusText != null && statusText.getText().toString().contains("DIARY_INSTALLED=YES"));
+                
     }
 
     private void writeAsset() throws Exception {
