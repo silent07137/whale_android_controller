@@ -100,27 +100,106 @@ watch_start() {
   pid=$!
   echo "$pid $(stamp "$pid")" > "$STATE/watch.pid"
 }
+start_qq_stack() {
+  # 只运行显示层、SnowLuma 和 QQ，不调用旧代理。
+  ubuntu "$(cat <<'GUEST'
+set -u
+export DISPLAY=:1
+mkdir -p /root/.vnc /root/.zhiy-runtime
+if ! pgrep -x Xvfb >/dev/null 2>&1; then
+  if command -v Xvfb >/dev/null; then
+    nohup Xvfb :1 -screen 0 1280x720x16 -nolisten tcp >/tmp/zhiy-xvfb.log 2>&1 &
+    echo "XVFB=START_REQUESTED"
+  else echo "WARN=Xvfb_not_installed"; fi
+fi
+sleep 2
+if ! pgrep -x fluxbox >/dev/null 2>&1; then
+  if command -v fluxbox >/dev/null; then
+    nohup fluxbox >/tmp/zhiy-fluxbox.log 2>&1 &
+    echo "FLUXBOX=START_REQUESTED"
+  else echo "WARN=fluxbox_not_installed"; fi
+fi
+if ! pgrep -x x11vnc >/dev/null 2>&1; then
+  if command -v x11vnc >/dev/null && [ -r /root/.vnc/passwd ]; then
+    nohup x11vnc -display :1 -localhost -rfbport 5900 \
+      -rfbauth /root/.vnc/passwd -forever -shared \
+      >/tmp/zhiy-x11vnc.log 2>&1 &
+    echo "VNC=START_REQUESTED"
+  else echo "WARN=x11vnc_or_vnc_password_missing"; fi
+fi
+if ! curl -sS -o /dev/null --max-time 2 http://127.0.0.1:6081/vnc.html; then
+  if command -v websockify >/dev/null && [ -d /usr/share/novnc ]; then
+    nohup websockify --web=/usr/share/novnc 127.0.0.1:6081 127.0.0.1:5900 \
+      >/tmp/zhiy-websockify.log 2>&1 &
+    echo "NOVNC=START_REQUESTED"
+  else echo "WARN=websockify_or_noVNC_missing"; fi
+fi
+snow_up() {
+  curl -sS -o /dev/null --max-time 2 http://127.0.0.1:5099/ 2>/dev/null ||
+  curl -sS -o /dev/null --max-time 2 http://127.0.0.1:3000/ 2>/dev/null
+}
+if snow_up; then
+  echo "SNOWLUMA=ALREADY_RUNNING"
+else
+  SNOW_DIR=
+  for candidate in /root/qqagentplus-lab/snowluma-new /opt/whale/snowluma; do
+    if [ -f "$candidate/index.mjs" ]; then SNOW_DIR="$candidate"; break; fi
+    candidate_entry=$(find "$candidate" -maxdepth 3 -type f -name index.mjs \
+      -not -path "*/node_modules/*" -print -quit 2>/dev/null)
+    if [ -n "$candidate_entry" ]; then
+      SNOW_DIR=$(dirname "$candidate_entry")
+      break
+    fi
+  done
+  if [ -z "$SNOW_DIR" ]; then
+    echo "WARN=SnowLuma_entry_not_found"
+  else
+    if [ -f /root/.zhiy-runtime/snow.pid ]; then
+      read -r snow_pid snow_stamp < /root/.zhiy-runtime/snow.pid || true
+      if [ -n "$snow_pid" ] && [ -n "$snow_stamp" ] &&
+         [ -r "/proc/$snow_pid/stat" ] &&
+         [ "$(awk '{print $22}' "/proc/$snow_pid/stat")" = "$snow_stamp" ] &&
+         kill -0 "$snow_pid" 2>/dev/null; then
+        echo "SNOWLUMA=STARTING"
+      else
+        rm -f /root/.zhiy-runtime/snow.pid
+      fi
+    fi
+    if [ ! -f /root/.zhiy-runtime/snow.pid ]; then
+      ( cd "$SNOW_DIR" || exit 1
+        nohup env DISPLAY=:1 SNOWLUMA_HOOK_AUTOLOAD=1 node ./index.mjs \
+          >/tmp/zhiy-snowluma.log 2>&1 &
+        pid=$!
+        stamp=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)
+        if [ -n "$stamp" ]; then
+          echo "$pid $stamp" > /root/.zhiy-runtime/snow.pid
+          echo "SNOWLUMA=START_REQUESTED"
+        else
+          echo "WARN=SnowLuma_exited_early"
+        fi
+      )
+    fi
+  fi
+fi
+sleep 4
+if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
+  echo "QQ=ALREADY_RUNNING"
+elif [ -x /opt/QQ/qq ]; then
+  nohup /opt/QQ/qq --no-sandbox --disable-gpu --disable-dev-shm-usage \
+    >/tmp/zhiy-linuxqq.log 2>&1 &
+  echo "QQ=START_REQUESTED"
+else
+  echo "WARN=QQ_binary_missing"
+fi
+GUEST
+)"
+}
+
 start() {
   prepare
   legacy_active && fail '旧大肥鱼后台守护仍在启用，请先关闭旧守护，避免 QQAgent 被重新启动'
   touch "$STATE/wanted"
-  # 复用现有 SnowLuma、Linux QQ，避免重复登录和连接冲突。
-  if qq_ok; then
-    echo 'QQ=EXISTING'
-  elif [ -f "$ROOTFS/root/start-zhiy-qq.sh" ]; then
-    ubuntu 'bash /root/start-zhiy-qq.sh' || echo 'WARN: QQ 启动脚本失败'
-    echo 'QQ=START_REQUESTED'
-  else
-    echo 'QQ=NOT_RUNNING_NEEDS_SEPARATE_START'
-  fi
-  if snow_ok; then
-    echo 'SNOWLUMA=EXISTING'
-  elif [ -f "$ROOTFS/root/start-zhiy-snowluma.sh" ]; then
-    ubuntu 'bash /root/start-zhiy-snowluma.sh' || echo 'WARN: SnowLuma 启动脚本失败'
-    echo 'SNOWLUMA=START_REQUESTED'
-  else
-    echo 'SNOWLUMA=NOT_RUNNING_NEEDS_SEPARATE_START'
-  fi
+  start_qq_stack || echo 'WARN=QQ_STACK_START_INCOMPLETE'
   launch_maibot
   watch_start
   echo 'START_COMMAND_COMPLETED=1'
@@ -163,11 +242,11 @@ watch() {
   while [ -e "$STATE/wanted" ] && [ -e "$STATE/watch-enabled" ]; do
     sleep 90 & wait $! || exit 0
     [ -e "$STATE/wanted" ] || break
-    if maibot_ok; then misses=0; else
+    if health >/dev/null 2>&1; then misses=0; else
       misses=$((misses+1))
       echo "[$(date)] MaiBot health miss $misses/2"
       if [ "$misses" -ge 2 ]; then
-        launch_maibot || true
+        start || true
         misses=0
       fi
     fi
