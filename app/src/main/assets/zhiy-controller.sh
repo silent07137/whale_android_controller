@@ -15,8 +15,16 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 MAIBOT_DIR=/root/maibot-whale
 MAIBOT_BIN=/root/.local/bin/maibot
 MAIBOT_PORT=8001
+# 已确认旧 Linux QQ 专用资料目录；若目标账号不同，仅修改 Root 私有 config.sh。
+QQ_PROFILE_HOME=/root/qqagentplus-lab/qq-home
 # 仅在 Root 私有文件内自定义，不能填写 QQAgent 旧启动脚本。
 [ -f "$CONF" ] && . "$CONF"
+# 防止将配置路径插入 Shell 命令；不能将 HOME 重设为 /root。
+case "$QQ_PROFILE_HOME" in
+  /root/*) case "$QQ_PROFILE_HOME" in *[!A-Za-z0-9_./-]*) fail 'QQ_PROFILE_HOME 含非法字符';; esac ;;
+  *) fail 'QQ_PROFILE_HOME 必须是 Ubuntu 内已有的 /root/ 子目录' ;;
+esac
+[ "$QQ_PROFILE_HOME" != /root ] || fail '拒绝以 /root 默认资料目录启动 QQ'
 install() {
   cp "$0" "$SELF.new" && chmod 700 "$SELF.new" && mv -f "$SELF.new" "$SELF" || fail '安装失败'
   if [ ! -f "$CONF" ]; then
@@ -24,6 +32,8 @@ install() {
 MAIBOT_DIR=/root/maibot-whale
 MAIBOT_BIN=/root/.local/bin/maibot
 MAIBOT_PORT=8001
+# QQ_PROFILE_HOME is the dedicated existing QQ login profile, never /root.
+QQ_PROFILE_HOME=/root/qqagentplus-lab/qq-home
 CONFIG
     chmod 600 "$CONF"
   fi
@@ -47,7 +57,16 @@ ubuntu() {
 probe() { ubuntu "curl -sS --max-time 3 -o /dev/null http://127.0.0.1:$1/" >/dev/null 2>&1; }
 maibot_ok() { probe "$MAIBOT_PORT"; }
 snow_ok() { probe 5099 || probe 3000; }
-qq_ok() { ubuntu 'pgrep -f "^/opt/QQ/qq( |$)" >/dev/null' 2>/dev/null; }
+qq_ok() {
+  ubuntu "EXPECTED_HOME='$QQ_PROFILE_HOME'
+for pid in \$(pgrep -f '^/opt/QQ/qq([[:space:]]|$)' 2>/dev/null || true); do
+  [ -r \"/proc/\$pid/environ\" ] || continue
+  if tr '\\0' '\\n' <\"/proc/\$pid/environ\" | grep -Fx \"HOME=\$EXPECTED_HOME\" >/dev/null; then
+    exit 0
+  fi
+done
+exit 1" 2>/dev/null
+}
 stamp() { [ -r "/proc/$1/stat" ] && awk '{print $22}' "/proc/$1/stat" 2>/dev/null; }
 owned() {
   [ -r "$STATE/maibot.pid" ] || return 1
@@ -119,8 +138,13 @@ watch_start() {
   echo "$pid $(stamp "$pid")" > "$STATE/watch.pid"
 }
 start_qq_stack() {
-  # 只运行显示层、SnowLuma 和 QQ，不调用旧代理。
-  ubuntu "$(cat <<'GUEST'
+  # 严禁隐式创建新 QQ 账号资料目录：只接受已存在的独立登录资料。
+  ubuntu "test -d '$QQ_PROFILE_HOME'" || {
+    echo "ERROR=QQ_PROFILE_HOME_MISSING:$QQ_PROFILE_HOME"
+    return 13
+  }
+  ubuntu "export QQ_PROFILE_HOME='$QQ_PROFILE_HOME'
+$(cat <<'GUEST'
 set -u
 qq_failed=0
 export DISPLAY=:1
@@ -212,20 +236,42 @@ if [ "$ready" != 1 ]; then
   exit 11
 fi
 sleep 1
-if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
-  echo "QQ=ALREADY_RUNNING"
+# 当前运行的 QQ 即使来自同一个可执行文件，也可能使用其他账号。
+# 为避免两个账号争抢 Hook，遇到不匹配的进程则停止继续启动，而非复用它。
+qq_pids=$(pgrep -f "^/opt/QQ/qq([[:space:]]|$)" 2>/dev/null || true)
+if [ -n "$qq_pids" ]; then
+  matched=0
+  for running_pid in $qq_pids; do
+    if [ -r "/proc/$running_pid/environ" ] &&
+      tr '\0' '\n' < "/proc/$running_pid/environ" | grep -Fx "HOME=$QQ_PROFILE_HOME" >/dev/null; then
+      matched=1
+      break
+    fi
+  done
+  if [ "$matched" = 1 ]; then
+    echo "QQ=ALREADY_RUNNING_WITH_EXPECTED_PROFILE"
+  else
+    echo "ERROR=QQ_WRONG_PROFILE_ALREADY_RUNNING"
+    exit 14
+  fi
 elif [ -x /opt/QQ/qq ]; then
-  nohup /opt/QQ/qq --no-sandbox --disable-gpu --disable-dev-shm-usage \
+  echo "QQ_PROFILE_HOME=$QQ_PROFILE_HOME"
+  nohup env HOME="$QQ_PROFILE_HOME" \
+    XDG_CONFIG_HOME="$QQ_PROFILE_HOME/.config" \
+    XDG_DATA_HOME="$QQ_PROFILE_HOME/.local/share" \
+    XDG_CACHE_HOME="$QQ_PROFILE_HOME/.cache" \
+    /opt/QQ/qq --no-sandbox --disable-gpu --disable-dev-shm-usage \
     >/tmp/zhiy-linuxqq.log 2>&1 &
   qq_pid=$!
   qq_stamp=$(awk '{print $22}' "/proc/$qq_pid/stat" 2>/dev/null || true)
   if [ -n "$qq_stamp" ]; then
     echo "$qq_pid $qq_stamp" >/root/.zhiy-runtime/qq.pid
   fi
-  echo "QQ=LAUNCH_SENT"
+  echo "QQ=LAUNCH_SENT_WITH_DEDICATED_PROFILE"
   sleep 6
-  if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
-    echo "QQ=PROCESS_RUNNING"
+  if [ -r "/proc/$qq_pid/environ" ] &&
+     tr '\0' '\n' <"/proc/$qq_pid/environ" | grep -Fx "HOME=$QQ_PROFILE_HOME" >/dev/null; then
+    echo "QQ=EXPECTED_PROFILE_PROCESS_RUNNING"
   else
     echo "ERROR=QQ_EXITED_CHECK_ZHIY_LINUXQQ_LOG"
     qq_failed=1
@@ -292,6 +338,7 @@ status() {
   [ -e "$STATE/autoboot" ] && echo 'AUTOBOOT=ON' || echo 'AUTOBOOT=OFF'
   legacy_active && echo 'LEGACY_WATCH=ACTIVE' || echo 'LEGACY_WATCH=INACTIVE'
   echo "MAIBOT_DIR=$MAIBOT_DIR"
+  echo "QQ_PROFILE_HOME=$QQ_PROFILE_HOME"
   health
 }
 watch() {
