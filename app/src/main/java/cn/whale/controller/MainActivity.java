@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
-        TextView note = text("Termux 无需前台运行。先确认 SnowLuma 就绪，再拉起 QQ；若失败将显示部分失败并提供分别查看日志的入口。测试完成前请保持后台守护和开机自启关闭。", 12, MUTED, false);
+        TextView note = text("知遥使用专用 QQ 桌面 :2 → VNC 5902 → noVNC 6082，隔离登录资料。原来的 6081 桌面不参与。测试完成前保持后台守护和开机自启关闭。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
         body.addView(options);
@@ -147,10 +147,10 @@ public class MainActivity extends Activity {
         browser.addView(text("管理页面", 17, GOLD, true));
         Button mai = button("MaiBot WebUI · 8001", false);
         Button snow = button("SnowLuma · 5099", false);
-        Button vnc = button("Linux QQ 桌面 · 6081", false);
+        Button vnc = button("Linux QQ 专用桌面 · 6082", false);
         mai.setOnClickListener(v -> open("http://127.0.0.1:8001"));
         snow.setOnClickListener(v -> open("http://127.0.0.1:5099"));
-        vnc.setOnClickListener(v -> open("http://127.0.0.1:6081/vnc.html"));
+        vnc.setOnClickListener(v -> open("http://127.0.0.1:6082/vnc.html"));
         browser.addView(mai); browser.addView(snow); browser.addView(vnc);
         body.addView(browser);
 
