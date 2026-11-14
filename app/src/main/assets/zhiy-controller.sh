@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# 知遥控制台，独立于 Termux。只管理 MaiBot，不启动 QQAgent。
+# 知遥控制台，独立于 Termux。管理 MaiBot、SnowLuma、Linux QQ 和图形层；绝不启动 QQAgent。
 set -u
 umask 077
 STATE=/data/adb/zhiy-controller
@@ -86,7 +86,7 @@ watch_alive() {
   case "$pid" in ''|*[!0-9]*) return 1;; esac
   [ -n "$token" ] && [ "$(stamp "$pid")" = "$token" ] && kill -0 "$pid" 2>/dev/null
 }
-watch_stop_qq_stack() {
+stop_qq_stack() {
   # 只停止由知遥启动器启动并记录 PID 与进程开始时间的进程。
   ubuntu "$(cat <<'GUEST'
 for key in qq snow; do
@@ -104,7 +104,7 @@ done
 GUEST
 )"
 }
-stop() {
+watch_stop() {
   if watch_alive; then
     read -r pid token < "$STATE/watch.pid"
     kill -TERM "$pid" 2>/dev/null || true
@@ -122,6 +122,7 @@ start_qq_stack() {
   # 只运行显示层、SnowLuma 和 QQ，不调用旧代理。
   ubuntu "$(cat <<'GUEST'
 set -u
+qq_failed=0
 export DISPLAY=:1
 mkdir -p /root/.vnc /root/.zhiy-runtime
 if ! pgrep -x Xvfb >/dev/null 2>&1; then
@@ -199,7 +200,18 @@ else
     fi
   fi
 fi
-sleep 4
+# Hook 必须在 QQ 冷启动前就绪，避免 QQ 先运行但未被注入。
+ready=0
+for try in 1 2 3 4 5 6 7 8 9 10; do
+  if snow_up; then ready=1; break; fi
+  sleep 2
+done
+if [ "$ready" != 1 ]; then
+  echo "ERROR=SNOWLUMA_NOT_READY_CHECK_ZHIY_SNOWLUMA_LOG"
+  # 不启动未注入 Hook 的 QQ；如 QQ 已经独立运行，也不要杀掉它。
+  exit 11
+fi
+sleep 1
 if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
   echo "QQ=ALREADY_RUNNING"
 elif [ -x /opt/QQ/qq ]; then
@@ -210,10 +222,19 @@ elif [ -x /opt/QQ/qq ]; then
   if [ -n "$qq_stamp" ]; then
     echo "$qq_pid $qq_stamp" >/root/.zhiy-runtime/qq.pid
   fi
-  echo "QQ=START_REQUESTED"
+  echo "QQ=LAUNCH_SENT"
+  sleep 6
+  if pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null 2>&1; then
+    echo "QQ=PROCESS_RUNNING"
+  else
+    echo "ERROR=QQ_EXITED_CHECK_ZHIY_LINUXQQ_LOG"
+    qq_failed=1
+  fi
 else
-  echo "WARN=QQ_binary_missing"
+  echo "ERROR=QQ_BINARY_MISSING"
+  qq_failed=1
 fi
+if [ "$qq_failed" = 1 ]; then exit 10; fi
 GUEST
 )"
 }
@@ -222,9 +243,16 @@ start() {
   prepare
   legacy_active && fail '旧大肥鱼后台守护仍在启用，请先关闭旧守护，避免 QQAgent 被重新启动'
   touch "$STATE/wanted"
-  start_qq_stack || echo 'WARN=QQ_STACK_START_INCOMPLETE'
+  # 即使 QQ 链路失败，MaiBot 仍可用于 WebUI 排错，但必须报告部分失败。
+  stack_rc=0
+  start_qq_stack || stack_rc=$?
   launch_maibot
   watch_start
+  if [ "$stack_rc" -ne 0 ]; then
+    echo "START_PARTIAL_FAILURE=QQ_STACK_EXIT_$stack_rc"
+    echo 'HINT=SEE_LOGS_SNOW_AND_LOGS_QQ'
+    return 1
+  fi
   echo 'START_COMMAND_COMPLETED=1'
 }
 stop() {
@@ -320,6 +348,15 @@ case "$action" in
   logs) tail -n 100 "$STATE/watch.log" 2>/dev/null || echo '暂无守护日志' ;;
   logs-boot) tail -n 100 "$STATE/boot.log" 2>/dev/null || echo '暂无开机日志' ;;
   logs-maibot) tail -n 100 "$STATE/maibot.log" 2>/dev/null || echo '暂无 MaiBot 日志' ;;
+  logs-snow)
+    prepare
+    ubuntu 'echo "===== SnowLuma 启动日志 ====="; tail -n 65 /tmp/zhiy-snowluma.log 2>/dev/null || echo "尚无 SnowLuma 日志"; echo "===== SnowLuma 端口 ====="; ss -lnt 2>/dev/null | grep -E ":(5099|3000|3001)[[:space:]]" || true' ;;
+  logs-qq)
+    prepare
+    ubuntu 'echo "===== QQ 启动日志 ====="; tail -n 65 /tmp/zhiy-linuxqq.log 2>/dev/null || echo "尚无 QQ 启动日志"; echo "===== QQ 进程 ====="; pgrep -af "/opt/QQ/qq" || true; echo "===== DISPLAY ====="; pgrep -af "Xvfb|fluxbox" || true' ;;
+  logs-gui)
+    prepare
+    ubuntu 'for n in xvfb fluxbox x11vnc websockify; do echo "===== $n ====="; tail -n 15 "/tmp/zhiy-$n.log" 2>/dev/null || true; done' ;;
   summary) summary ;;
   *) fail "未知操作：$action" ;;
 esac
