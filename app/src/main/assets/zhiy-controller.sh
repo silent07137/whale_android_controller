@@ -117,6 +117,14 @@ for key in qq snow; do
   case "$pid" in ''|*[!0-9]*) rm -f "$file"; continue;; esac
   if [ -n "$stamp" ] && [ -r "/proc/$pid/stat" ] &&
      [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$stamp" ]; then
+    # 新版不能误停旧版 v0.1.5 启动的 DISPLAY=:1 QQ 或 SnowLuma。
+    if [ "$key" = qq ] || [ "$key" = snow ]; then
+      if ! tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -Fx 'DISPLAY=:2' >/dev/null; then
+        echo "$key=SKIPPED_OTHER_DISPLAY"
+        rm -f "$file"
+        continue
+      fi
+    fi
     kill -TERM "$pid" 2>/dev/null || true
     echo "$key=STOP_REQUESTED"
   else echo "$key=NOT_OWNED"; fi
@@ -195,15 +203,10 @@ if ! fluxbox_2_running; then
 fi
 if ! ss -lnt 2>/dev/null | grep -Eq ':5902[[:space:]]'; then
   if command -v x11vnc >/dev/null; then
-    if [ -r /root/.vnc/passwd ]; then
-      nohup x11vnc -display :2 -noshm -noxdamage -localhost -rfbport 5902 \
-        -rfbauth /root/.vnc/passwd -forever -shared \
-        >/tmp/zhiy-x11vnc.log 2>&1 &
-    else
-      # 兼容原来的仅回环地址 VNC 配置；无密码时绝不绑定公网。
-      nohup x11vnc -display :2 -noshm -noxdamage -localhost -rfbport 5902 \
-        -nopw -forever -shared >/tmp/zhiy-x11vnc.log 2>&1 &
-    fi
+    # 还原用户原本的回环地址 VNC 会话：:2 / 5902 / 6082。
+    # 仅监听 localhost，避免无密码 VNC 暴露到局域网。
+    nohup x11vnc -display :2 -noshm -noxdamage -localhost -rfbport 5902 \
+      -nopw -forever -shared >/tmp/zhiy-x11vnc.log 2>&1 &
     echo "VNC_5902=START_REQUESTED"
   else echo "WARN=x11vnc_not_installed"; fi
 fi
@@ -294,9 +297,6 @@ if [ -n "$qq_pids" ]; then
   fi
 elif [ -x /opt/QQ/qq ]; then
   echo "QQ_PROFILE_HOME=$QQ_PROFILE_HOME"
-  echo 'QQ_DISPLAY=:2'
-  echo 'QQ_VNC_BACKEND=5902'
-  echo 'QQ_NOVNC=6082'
   mkdir -p "$QQ_PROFILE_HOME/.runtime"
   chmod 700 "$QQ_PROFILE_HOME/.runtime"
   nohup env DISPLAY=:2 HOME="$QQ_PROFILE_HOME" \
@@ -323,6 +323,20 @@ elif [ -x /opt/QQ/qq ]; then
   fi
 else
   echo "ERROR=QQ_BINARY_MISSING"
+  qq_failed=1
+fi
+# 必须同时有 noVNC 网页与 VNC 后端，否则明确报错。
+vnc_ready=0
+for try in 1 2 3 4 5; do
+  if curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:6082/vnc.html &&
+     ss -lnt 2>/dev/null | grep -Eq ':5902[[:space:]]'; then
+    vnc_ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$vnc_ready" != 1 ]; then
+  echo "ERROR=NOVNC_6082_OR_VNC_5902_NOT_READY"
   qq_failed=1
 fi
 if [ "$qq_failed" = 1 ]; then exit 10; fi
@@ -376,7 +390,7 @@ health() {
     rc=1
   fi
   # noVNC 6082 必须同时具有对应的 x11vnc 5902 后端。
-  if ubuntu 'curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:6081/vnc.html && ss -lnt | grep -Eq ":5902[[:space:]]"'; then
+  if ubuntu 'curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:6082/vnc.html && ss -lnt | grep -Eq ":5902[[:space:]]"'; then
     echo 'VNC=OK'
   else
     echo 'VNC=BACKEND_DOWN_OR_WEB_DOWN'
@@ -392,6 +406,9 @@ status() {
   legacy_active && echo 'LEGACY_WATCH=ACTIVE' || echo 'LEGACY_WATCH=INACTIVE'
   echo "MAIBOT_DIR=$MAIBOT_DIR"
   echo "QQ_PROFILE_HOME=$QQ_PROFILE_HOME"
+  echo 'QQ_DISPLAY=:2'
+  echo 'QQ_VNC_BACKEND=5902'
+  echo 'QQ_NOVNC=6082'
   health
 }
 watch() {
@@ -462,7 +479,7 @@ case "$action" in
     ubuntu 'echo "===== QQ 启动日志 ====="; tail -n 65 /tmp/zhiy-linuxqq.log 2>/dev/null || echo "尚无 QQ 启动日志"; echo "===== QQ 进程 ====="; pgrep -af "/opt/QQ/qq" || true; echo "===== DISPLAY ====="; pgrep -af "Xvfb|fluxbox" || true' ;;
   logs-gui)
     prepare
-    ubuntu 'for n in xvfb fluxbox x11vnc websockify; do echo "===== $n ====="; tail -n 15 "/tmp/zhiy-$n.log" 2>/dev/null || true; done' ;;
+    ubuntu 'echo "===== :2 / 5902 / 6082 ====="; ss -lntp 2>/dev/null | grep -E ":(5902|6082)[[:space:]]" || true; for n in xvfb fluxbox x11vnc websockify; do echo "===== $n ====="; tail -n 15 "/tmp/zhiy-$n.log" 2>/dev/null || true; done' ;;
   summary) summary ;;
   *) fail "未知操作：$action" ;;
 esac
