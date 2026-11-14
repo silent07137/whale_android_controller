@@ -140,7 +140,7 @@ if ! pgrep -x fluxbox >/dev/null 2>&1; then
 fi
 if ! pgrep -x x11vnc >/dev/null 2>&1; then
   if command -v x11vnc >/dev/null && [ -r /root/.vnc/passwd ]; then
-    nohup x11vnc -display :1 -localhost -rfbport 5900 \
+    nohup x11vnc -display :1 -noshm -noxdamage -localhost -rfbport 5900 \
       -rfbauth /root/.vnc/passwd -forever -shared \
       >/tmp/zhiy-x11vnc.log 2>&1 &
     echo "VNC=START_REQUESTED"
@@ -276,7 +276,13 @@ health() {
   if maibot_ok; then echo 'MAIBOT=OK'; else echo 'MAIBOT=DOWN'; rc=1; fi
   if snow_ok; then echo 'SNOWLUMA=OK'; else echo 'SNOWLUMA=DOWN'; rc=1; fi
   if qq_ok; then echo 'QQ_PROCESS=OK'; else echo 'QQ_PROCESS=DOWN'; rc=1; fi
-  if probe 6081; then echo 'VNC=OK'; else echo 'VNC=OPTIONAL_DOWN'; fi
+  # noVNC 的 6081 网页能打开，不代表它的 x11vnc 后端 5900 可连接。
+  if ubuntu 'curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:6081/vnc.html && ss -lnt | grep -Eq ":5900[[:space:]]"'; then
+    echo 'VNC=OK'
+  else
+    echo 'VNC=BACKEND_DOWN_OR_WEB_DOWN'
+    rc=1
+  fi
   return "$rc"
 }
 status() {
