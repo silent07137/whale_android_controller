@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
-        TextView note = text("Termux 不必保持打开。Root 将按显示环境 → SnowLuma → QQ → MaiBot 的顺序启动；停止时只结束由本控制台启动的服务，避免误杀其他进程。", 12, MUTED, false);
+        TextView note = text("Termux 无需前台运行。先确认 SnowLuma 就绪，再拉起 QQ；若失败将显示部分失败并提供分别查看日志的入口。测试完成前请保持后台守护和开机自启关闭。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
         body.addView(options);
@@ -169,6 +169,15 @@ public class MainActivity extends Activity {
         Button maiLog = button("查看 MaiBot 启动日志", false);
         maiLog.setOnClickListener(v -> execute("logs-maibot"));
         diagnostics.addView(maiLog);
+        Button snowLog = button("查看 SnowLuma 启动日志", false);
+        snowLog.setOnClickListener(v -> execute("logs-snow"));
+        diagnostics.addView(snowLog);
+        Button qqLog = button("查看 Linux QQ 启动日志", false);
+        qqLog.setOnClickListener(v -> execute("logs-qq"));
+        diagnostics.addView(qqLog);
+        Button guiLog = button("查看图形桌面启动日志", false);
+        guiLog.setOnClickListener(v -> execute("logs-gui"));
+        diagnostics.addView(guiLog);
         body.addView(diagnostics);
 
         LinearLayout output = panel();
