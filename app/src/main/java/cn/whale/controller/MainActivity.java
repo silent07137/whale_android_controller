@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 大肥鱼控制台：仅负责用户主动发起的 Root 命令和显示状态。
+ * 知遥控制台：仅负责用户主动发起的 Root 命令和显示状态。
  * 长期监控由用户授权后的 KernelSU Root 脚本独立执行，无需运行 Termux Activity。
  */
 public class MainActivity extends Activity {
@@ -46,12 +46,9 @@ public class MainActivity extends Activity {
     private Switch hideToggle;
     private Switch guardToggle;
     private Switch bootToggle;
-    private Switch diaryAutoToggle;
     private Button startButton;
     private Button stopButton;
     private Button refreshButton;
-    private Button diaryButton;
-    private Button diaryStopButton;
     private Button summaryButton;
     private boolean syncing = false;
     private boolean busy = false;
@@ -82,9 +79,6 @@ public class MainActivity extends Activity {
         bootToggle.setOnCheckedChangeListener((button, value) -> {
             if (!syncing) execute(value ? "boot-on" : "boot-off");
         });
-        diaryAutoToggle.setOnCheckedChangeListener((button, value) -> {
-            if (!syncing) execute(value ? "diary-auto-on" : "diary-auto-off");
-        });
         execute("install");
     }
 
@@ -103,15 +97,15 @@ public class MainActivity extends Activity {
         scroll.addView(body);
         setContentView(scroll);
 
-        TextView title = text("🐋  大肥鱼控制台", 25, WHITE, true);
+        TextView title = text("🌙  知遥控制台", 25, WHITE, true);
         body.addView(title);
-        TextView subtitle = text("蓝色大肥鱼  ·  QQ Agent 0.4  ·  SnowLuma", 12, MUTED, false);
+        TextView subtitle = text("MaiBot · SnowLuma · KernelSU Root", 12, MUTED, false);
         subtitle.setPadding(0, dp(7), 0, dp(15));
         body.addView(subtitle);
 
         LinearLayout statusBox = panel();
         statusBox.addView(text("运行状态", 17, GOLD, true));
-        overviewText = text("正在检测主服务与探索日记……", 15, BLUE, true);
+        overviewText = text("正在检测 MaiBot 与 QQ 通信服务……", 15, BLUE, true);
         overviewText.setPadding(0, dp(9), 0, dp(2));
         statusBox.addView(overviewText);
         statusText = text("正在连接 Root 控制层……", 13, WHITE, false);
@@ -122,8 +116,8 @@ public class MainActivity extends Activity {
 
         LinearLayout controls = panel();
         controls.addView(text("快捷操作", 17, GOLD, true));
-        startButton = button("启动大肥鱼", true);
-        stopButton = button("关闭大肥鱼", false);
+        startButton = button("启动知遥", true);
+        stopButton = button("停止知遥服务", false);
         refreshButton = button("刷新运行状态", false);
         controls.addView(startButton);
         controls.addView(stopButton);
@@ -144,47 +138,26 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
-        diaryAutoToggle = new Switch(this);
-        setupSwitch(diaryAutoToggle, "探索日记随大肥鱼启动（可选）");
-        options.addView(diaryAutoToggle);
-        TextView note = text("隐藏最近任务 ≠ 永久保活。守护脚本在 Root 后台运行，不会打开 Termux 窗口。启动和停止保留手动控制；不能保证断线期间的消息全部补收。", 12, MUTED, false);
+        TextView note = text("Termux 无需前台运行。先确认 SnowLuma 就绪，再拉起 QQ；若失败将显示部分失败并提供分别查看日志的入口。测试完成前请保持后台守护和开机自启关闭。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
         body.addView(options);
 
         LinearLayout browser = panel();
         browser.addView(text("管理页面", 17, GOLD, true));
-        Button qq = button("QQ Agent · 3210", false);
+        Button mai = button("MaiBot WebUI · 8001", false);
         Button snow = button("SnowLuma · 5099", false);
         Button vnc = button("Linux QQ 桌面 · 6081", false);
-        qq.setOnClickListener(v -> open("http://127.0.0.1:3210"));
+        mai.setOnClickListener(v -> open("http://127.0.0.1:8001"));
         snow.setOnClickListener(v -> open("http://127.0.0.1:5099"));
         vnc.setOnClickListener(v -> open("http://127.0.0.1:6081/vnc.html"));
-        browser.addView(qq); browser.addView(snow); browser.addView(vnc);
-        TextView hint = text("网页阅读与视频识读是 QQ Agent 内的技能，请在 QQ Agent → 技能 中使用；本 App 不会启用已崩溃的 WebKitWebDriver。", 12, MUTED, false);
-        hint.setPadding(0, dp(9), 0, 0);
-        browser.addView(hint);
+        browser.addView(mai); browser.addView(snow); browser.addView(vnc);
         body.addView(browser);
 
-        LinearLayout diary = panel();
-        diary.addView(text("🧭 自主探索中心", 17, GOLD, true));
-        TextView diaryNote = text("管理独立的只读日记面板（本机 3222）。一键启动后自动打开带访问密钥的页面；URL 不在控制台日志中展示。", 12, MUTED, false);
-        diaryNote.setPadding(0, dp(8), 0, dp(4));
-        diary.addView(diaryNote);
-        diaryButton = button("打开／启动探索日记", true);
-        diaryStopButton = button("仅停止探索日记", false);
-        diaryButton.setOnClickListener(v -> execute("diary-open"));
-        diaryStopButton.setOnClickListener(v -> execute("diary-stop"));
-        diary.addView(diaryButton);
-        diary.addView(diaryStopButton);
-        Button diaryLog = button("查看日记服务日志", false);
-        diaryLog.setOnClickListener(v -> execute("logs-diary"));
-        diary.addView(diaryLog);
-        body.addView(diary);
 
         LinearLayout diagnostics = panel();
         diagnostics.addView(text("🔎 快速诊断", 17, GOLD, true));
-        TextView diagNote = text("只查看设备总内存、存储空间和服务日志，不读取 QQ 聊天内容，不会重启后台。", 12, MUTED, false);
+        TextView diagNote = text("只显示内存、空间和服务日志，不读取聊天记录和密钥。", 12, MUTED, false);
         diagNote.setPadding(0, dp(9), 0, 0);
         diagnostics.addView(diagNote);
         summaryButton = button("查看内存与空间", false);
@@ -193,6 +166,18 @@ public class MainActivity extends Activity {
         Button bootLog = button("查看开机启动日志", false);
         bootLog.setOnClickListener(v -> execute("logs-boot"));
         diagnostics.addView(bootLog);
+        Button maiLog = button("查看 MaiBot 启动日志", false);
+        maiLog.setOnClickListener(v -> execute("logs-maibot"));
+        diagnostics.addView(maiLog);
+        Button snowLog = button("查看 SnowLuma 启动日志", false);
+        snowLog.setOnClickListener(v -> execute("logs-snow"));
+        diagnostics.addView(snowLog);
+        Button qqLog = button("查看 Linux QQ 启动日志", false);
+        qqLog.setOnClickListener(v -> execute("logs-qq"));
+        diagnostics.addView(qqLog);
+        Button guiLog = button("查看图形桌面启动日志", false);
+        guiLog.setOnClickListener(v -> execute("logs-gui"));
+        diagnostics.addView(guiLog);
         body.addView(diagnostics);
 
         LinearLayout output = panel();
@@ -283,7 +268,7 @@ public class MainActivity extends Activity {
             try {
                 if ("install".equals(action)) writeAsset();
                 String script = "install".equals(action) ? installScript.getAbsolutePath() :
-                        "/data/adb/whale-controller/controller.sh";
+                        "/data/adb/zhiy-controller/controller.sh";
                 String command = "/system/bin/sh " + script + " " + action;
                 Process process = new ProcessBuilder("su", "-c", command)
                         .redirectErrorStream(true).start();
@@ -300,19 +285,13 @@ public class MainActivity extends Activity {
             }
             final String response = result;
             runOnUiThread(() -> {
-                // 只把日记密钥传入本机浏览器，绝不能在“最近操作”中明文显示。
-                String diaryUrl = "diary-open".equals(action) ? extractDiaryUrl(response) : null;
-                String safeResponse = response.replaceAll("(?m)^DIARY_URL=.*$", "DIARY_URL=（已隐藏，仅在浏览器中打开）");
                 if (!"status".equals(action)) {
-                    lastOperation = "操作：" + action + "\n" + safeResponse;
+                    lastOperation = "操作：" + action + "\n" + response;
                 }
                 activityText.setText(lastOperation);
                 busy = false;
                 setControlsEnabled(true);
-                if (diaryUrl != null && response.startsWith("退出码 0\n")) {
-                    open(diaryUrl);
-                }
-                if ("install".equals(action) && response.contains("CONTROLLER_INSTALLED=1")) execute("status");
+                if ("install".equals(action) && response.contains("INSTALLED=YES")) execute("status");
                 else if (!"logs".equals(action) && !action.startsWith("logs-") &&
                         !"status".equals(action) && !"summary".equals(action) &&
                         !"install".equals(action)) execute("status");
@@ -321,35 +300,21 @@ public class MainActivity extends Activity {
         });
     }
 
-    private String extractDiaryUrl(String output) {
-        for (String line : output.split("\\r?\\n")) {
-            if (line.startsWith("DIARY_URL=")) {
-                String url = line.substring("DIARY_URL=".length()).trim();
-                if (url.matches("http://127\\.0\\.0\\.1:3222/#[A-Za-z0-9_-]{24,120}")) {
-                    return url;
-                }
-            }
-        }
-        return null;
-    }
-
     private void parseStatus(String result) {
         statusText.setText(result.replace("退出码 0\n", ""));
-        boolean mainReady = result.contains("PORT_6081=OK") &&
-                result.contains("PORT_5099=OK") && result.contains("PORT_3210=OK") &&
+        boolean mainReady = result.contains("MAIBOT=OK") &&
+                result.contains("SNOWLUMA=OK") &&
                 result.contains("QQ_PROCESS=OK");
-        boolean diaryUp = result.contains("DIARY_PORT=OK");
-        String text = mainReady ? "● 大肥鱼主服务运行中" : "● 主服务有项目未就绪";
-        text += diaryUp ? "  ·  探索日记在线" : "  ·  探索日记未启动";
+        String text = mainReady ? "● 知遥的聊天服务运行中" : "● 有服务尚未就绪";
+        if (result.contains("LEGACY_WATCH=ACTIVE")) {
+            text += " · 旧版守护仍启用";
+        }
         overviewText.setText(text);
         syncing = true;
         if (result.contains("WATCH=ON")) guardToggle.setChecked(true);
         else if (result.contains("WATCH=OFF")) guardToggle.setChecked(false);
         if (result.contains("AUTOBOOT=ON")) bootToggle.setChecked(true);
         else if (result.contains("AUTOBOOT=OFF")) bootToggle.setChecked(false);
-        if (result.contains("DIARY_AUTOSTART=ON")) diaryAutoToggle.setChecked(true);
-        else if (result.contains("DIARY_AUTOSTART=OFF")) diaryAutoToggle.setChecked(false);
-        if (diaryButton != null) diaryButton.setEnabled(result.contains("DIARY_INSTALLED=YES"));
         syncing = false;
     }
 
@@ -358,13 +323,11 @@ public class MainActivity extends Activity {
         if (stopButton != null) stopButton.setEnabled(enabled);
         if (refreshButton != null) refreshButton.setEnabled(enabled);
         if (summaryButton != null) summaryButton.setEnabled(enabled);
-        if (diaryButton != null) diaryButton.setEnabled(enabled &&
-                statusText != null && statusText.getText().toString().contains("DIARY_INSTALLED=YES"));
-        if (diaryStopButton != null) diaryStopButton.setEnabled(enabled);
+                
     }
 
     private void writeAsset() throws Exception {
-        try (InputStream in = getAssets().open("controller.sh");
+        try (InputStream in = getAssets().open("zhiy-controller.sh");
              FileOutputStream out = new FileOutputStream(installScript, false)) {
             byte[] buffer = new byte[8192];
             int n;
