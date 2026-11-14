@@ -149,6 +149,17 @@ set -u
 qq_failed=0
 export DISPLAY=:1
 mkdir -p /root/.vnc /root/.zhiy-runtime
+# 在启动 SnowLuma/QQ 前检查所有已运行的 QQ，防止误用别人的 QQ 登录资料。
+for running_pid in $(pgrep -f "^/opt/QQ/qq([[:space:]]|$)" 2>/dev/null || true); do
+  if [ -r "/proc/$running_pid/environ" ] &&
+    tr '\0' '\n' <"/proc/$running_pid/environ" |
+      grep -Fx "HOME=$QQ_PROFILE_HOME" >/dev/null; then
+    :
+  else
+    echo "ERROR=QQ_WRONG_PROFILE_ALREADY_RUNNING"
+    exit 14
+  fi
+done
 if ! pgrep -x Xvfb >/dev/null 2>&1; then
   if command -v Xvfb >/dev/null; then
     nohup Xvfb :1 -screen 0 1280x720x16 -nolisten tcp >/tmp/zhiy-xvfb.log 2>&1 &
@@ -321,7 +332,15 @@ health() {
   rc=0
   if maibot_ok; then echo 'MAIBOT=OK'; else echo 'MAIBOT=DOWN'; rc=1; fi
   if snow_ok; then echo 'SNOWLUMA=OK'; else echo 'SNOWLUMA=DOWN'; rc=1; fi
-  if qq_ok; then echo 'QQ_PROCESS=OK'; else echo 'QQ_PROCESS=DOWN'; rc=1; fi
+  if qq_ok; then
+    echo 'QQ_PROCESS=OK'
+  elif ubuntu 'pgrep -f "^/opt/QQ/qq([[:space:]]|$)" >/dev/null' 2>/dev/null; then
+    echo 'QQ_PROCESS=WRONG_PROFILE'
+    rc=1
+  else
+    echo 'QQ_PROCESS=DOWN'
+    rc=1
+  fi
   # noVNC 的 6081 网页能打开，不代表它的 x11vnc 后端 5900 可连接。
   if ubuntu 'curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:6081/vnc.html && ss -lnt | grep -Eq ":5900[[:space:]]"'; then
     echo 'VNC=OK'
