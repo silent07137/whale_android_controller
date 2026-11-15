@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         bootToggle = new Switch(this);
         setupSwitch(bootToggle, "开机自启（KernelSU boot-completed.d）");
         options.addView(bootToggle);
-        TextView note = text("知遥使用专用 QQ 桌面 :2 → VNC 5902 → noVNC 6082，隔离登录资料。原来的 6081 桌面不参与。测试完成前保持后台守护和开机自启关闭。", 12, MUTED, false);
+        TextView note = text("恢复旧版 QQ 启动方式：桌面 :2、5902/6082、专用 QQ 账号与原 VNC 密码；先启动 QQ，再启动 SnowLuma，保留手动注入。只使用 MaiBot，不启动 QQAgentPlus。测试期间关闭后台守护与开机自启。", 12, MUTED, false);
         note.setPadding(0, dp(8), 0, 0);
         options.addView(note);
         body.addView(options);
@@ -146,10 +146,10 @@ public class MainActivity extends Activity {
         LinearLayout browser = panel();
         browser.addView(text("管理页面", 17, GOLD, true));
         Button mai = button("MaiBot WebUI · 8001", false);
-        Button snow = button("SnowLuma · 5099", false);
+        Button snow = button("SnowLuma · 5100", false);
         Button vnc = button("Linux QQ 专用桌面 · 6082", false);
         mai.setOnClickListener(v -> open("http://127.0.0.1:8001"));
-        snow.setOnClickListener(v -> open("http://127.0.0.1:5099"));
+        snow.setOnClickListener(v -> open("http://127.0.0.1:5100"));
         vnc.setOnClickListener(v -> open("http://127.0.0.1:6082/vnc.html"));
         browser.addView(mai); browser.addView(snow); browser.addView(vnc);
         body.addView(browser);
@@ -305,7 +305,7 @@ public class MainActivity extends Activity {
         boolean mainReady = result.contains("MAIBOT=OK") &&
                 result.contains("SNOWLUMA=OK") &&
                 result.contains("QQ_PROCESS=OK");
-        String text = mainReady ? "● 知遥的聊天服务运行中" : "● 有服务尚未就绪";
+        String text = mainReady ? "● 主要进程已就绪，QQ 登录与 OneBot 收发待验证" : "● 有服务尚未就绪";
         if (result.contains("LEGACY_WATCH=ACTIVE")) {
             text += " · 旧版守护仍启用";
         }
