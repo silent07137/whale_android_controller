@@ -229,6 +229,12 @@ start_qq() {
   else
     echo 'QQ=ALREADY_RUNNING_WITH_OLD_PROFILE'
   fi
+  # 若旧控制台启动的 SnowLuma 仍开启自动注入，不复用它进行知遥启动。
+  for snow_pid in $(find_owned snow); do
+    if env_has "$snow_pid" 'SNOWLUMA_HOOK_AUTOLOAD=1'; then
+      error "检测到旧 SnowLuma 自动注入仍开启（PID=$snow_pid）；先正常停止该实例"
+    fi
+  done
   if ! tcp 5100 && ! owned snow; then
     (cd "$SNL" || exit 1
       SNOWLUMA_HOOK_AUTOLOAD=0 nohup ./launcher.sh \
@@ -238,7 +244,7 @@ start_qq() {
       echo "SNOWLUMA=START_REQUESTED_PID_$pid"
     )
   else
-    echo 'SNOWLUMA=ALREADY_RUNNING'
+    echo 'SNOWLUMA=ALREADY_RUNNING_OR_PORT_OCCUPIED'
   fi
   sleep 3
   if tcp 6082; then echo 'NOVNC_6082=UP'; else echo 'NOVNC_6082=DOWN'; fi
