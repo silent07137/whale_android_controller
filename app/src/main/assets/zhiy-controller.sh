@@ -182,8 +182,10 @@ remember() {
   [ -n "$token" ] && printf '%s %s\n' "$pid" "$token" >"$RUNTIME/$kind.pid"
 }
 launch() {
-  nohup "$@" </dev/null >>"$LOG/$SERVICE.log" 2>&1 &
-  local pid=$!
+  local logname="$SERVICE" pid
+  case "$SERVICE" in flux) logname=fluxbox;; vnc) logname=x11vnc;; esac
+  nohup "$@" </dev/null >>"$LOG/$logname.log" 2>&1 &
+  pid=$!
   remember "$pid" "$SERVICE"
   echo "$SERVICE=START_REQUESTED_PID_$pid"
 }
