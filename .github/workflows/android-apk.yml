@@ -35,6 +35,25 @@ jobs:
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Validate KernelSU controller script
         run: sh -n app/src/main/assets/zhiy-controller.sh
+      - name: Validate embedded QQ-only Ubuntu runner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          script = Path("app/src/main/assets/zhiy-controller.sh").read_text()
+          blocks = re.findall(r"\$\(cat <<'GUEST'\n(.*?)\nGUEST\n\)", script, re.S)
+          assert len(blocks) == 1, f"expected exactly one embedded QQ runner, got {len(blocks)}"
+          subprocess.run(["bash", "-n"], input=blocks[0], text=True, check=True)
+          for required in ["SNOWLUMA_HOOK_AUTOLOAD=0", "./launcher.sh",
+                           "$LAB/vnc.pass", "127.0.0.1:6082",
+                           "127.0.0.1:5902", "QQHOME"]:
+              assert required in blocks[0], f"missing QQ runner setting: {required}"
+          for forbidden in ["src/server.js", "SNOWLUMA_HOOK_AUTOLOAD=1",
+                            "-nopw", "--in-process-gpu", "--no-zygote"]:
+              assert forbidden not in blocks[0], f"unexpected command in QQ runner: {forbidden}"
+          print("Embedded QQ-only runner: bash syntax and migration checks passed")
+          PY
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
