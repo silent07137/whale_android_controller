@@ -4,7 +4,7 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:usesCleartextTraffic="false"
-        android:label="大肥鱼控制台"
+        android:label="知遥控制台"
         android:theme="@style/AppTheme"
         android:icon="@drawable/whale_icon">
         <activity
