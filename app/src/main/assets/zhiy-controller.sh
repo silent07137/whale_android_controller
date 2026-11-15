@@ -43,9 +43,23 @@ mounted() { grep -q " $1 " /proc/mounts; }
 prepare() {
   [ -x "$BB" ] || fail "缺少 KernelSU BusyBox：$BB"
   [ -x "$ROOTFS/bin/bash" ] || fail "Ubuntu chroot 不可访问：$ROOTFS"
-  mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys"
+  mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys"
   mounted "$ROOTFS/dev" || "$BB" mount --bind /dev "$ROOTFS/dev" || fail '挂载 /dev 失败'
-  mounted "$ROOTFS/dev/pts" || "$BB" mount --bind /dev/pts "$ROOTFS/dev/pts" || fail '挂载 pts 失败'
+  # Ubuntu chroot 必须拥有可用的私有 devpts。旧版直接 bind Android 的 /dev/pts，
+  # Android 宿主可能没有此文件系统，结果 /dev/ptmx -> pts/ptmx 成为悬空链接。
+  # 首先隔离 /dev bind 的 mount propagation，避免把 devpts 挂载传播回 Android 系统。
+  "$BB" mount --make-rslave "$ROOTFS/dev" || fail '无法隔离 chroot /dev 的挂载传播'
+  mkdir -p "$ROOTFS/dev/pts"
+  # 不以 /proc/mounts 是否有条目作为 PTY 成功的证据；实际创建 PTY 才算通过。
+  if ! "$BB" chroot "$ROOTFS" /usr/bin/python3 -c 'import pty,os; a,b=pty.openpty(); os.close(a); os.close(b)' >/dev/null 2>&1; then
+    # 仅在没有 devpts 挂载时补挂；已有 devpts 仍失败则明确报错，不重复覆盖。
+    if ! awk -v p="$ROOTFS/dev/pts" '$2==p && $3=="devpts" {found=1} END {exit !found}' /proc/mounts; then
+      "$BB" mount -t devpts -o newinstance,ptmxmode=0666,mode=0620,gid=5 devpts "$ROOTFS/dev/pts" ||
+        fail '挂载 Ubuntu 专用 devpts 失败'
+    fi
+    "$BB" chroot "$ROOTFS" /usr/bin/python3 -c 'import pty,os; a,b=pty.openpty(); os.close(a); os.close(b)' >/dev/null 2>&1 ||
+      fail 'Ubuntu PTY 自检失败：请检查 /dev/ptmx 与 /dev/pts/ptmx'
+  fi
   mounted "$ROOTFS/proc" || "$BB" mount --bind /proc "$ROOTFS/proc" || fail '挂载 proc 失败'
   mounted "$ROOTFS/sys" || "$BB" mount --bind /sys "$ROOTFS/sys" || fail '挂载 sys 失败'
 }
@@ -452,6 +466,11 @@ summary() {
   prepare
   ubuntu 'awk "/MemTotal:/ {total=int(\$2/1024)} /MemAvailable:/ {free=int(\$2/1024)} END {printf \"TOTAL_RAM_MB=%d\\nAVAILABLE_RAM_MB=%d\\n\",total,free}" /proc/meminfo'
   ubuntu 'df -h / | tail -n 1' | while IFS= read -r line; do echo "ROOTFS_DISK=$line"; done
+  if ubuntu 'python3 -c "import pty,os; a,b=pty.openpty(); os.close(a); os.close(b)"' >/dev/null 2>&1; then
+    echo 'CHROOT_PTY=OK'
+  else
+    echo 'CHROOT_PTY=BROKEN'
+  fi
 }
 action=status
 [ "$#" -eq 0 ] || action=$1
