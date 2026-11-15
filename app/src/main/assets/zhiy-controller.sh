@@ -191,6 +191,12 @@ start_qq() {
   [ -x /opt/QQ/qq ] || error '缺少 /opt/QQ/qq'
   [ -f "$SNL/launcher.sh" ] || error '缺少 SnowLuma launcher.sh'
   [ -d "$QQHOME/.config/QQ" ] || error "QQ 资料目录不存在：$QQHOME/.config/QQ"
+  # 在启动 QQ 前隔离此前自动注入 Android QQ 的 SnowLuma 实例。
+  for snow_pid in $(find_owned snow); do
+    if env_has "$snow_pid" 'SNOWLUMA_HOOK_AUTOLOAD=1'; then
+      error "旧 SnowLuma 自动注入仍开启（PID=$snow_pid）；先正常停止该实例"
+    fi
+  done
   for pid in $(pgrep -f '^/opt/QQ/qq([[:space:]]|$)' 2>/dev/null || true); do
     if ! env_has "$pid" "HOME=$QQHOME" || ! env_has "$pid" 'DISPLAY=:2'; then
       error "发现其他 Linux QQ 账号实例（PID=$pid），请先正常退出"
@@ -206,6 +212,12 @@ start_qq() {
     DISPLAY=:2 HOME="$QQHOME" launch fluxbox
   fi
   if [ -s "$LAB/vnc.pass" ]; then
+    for vnc_pid in $(find_owned vnc); do
+      if tr '\000' ' ' <"/proc/$vnc_pid/cmdline" 2>/dev/null |
+        grep -Fq -- '-nopw'; then
+        echo "WARN=EXISTING_VNC_WITHOUT_PASSWORD_PID_$vnc_pid"
+      fi
+    done
     if ! owned vnc; then
       SERVICE=vnc
       launch x11vnc -display :2 -localhost -rfbport 5902 \
@@ -229,12 +241,6 @@ start_qq() {
   else
     echo 'QQ=ALREADY_RUNNING_WITH_OLD_PROFILE'
   fi
-  # 若旧控制台启动的 SnowLuma 仍开启自动注入，不复用它进行知遥启动。
-  for snow_pid in $(find_owned snow); do
-    if env_has "$snow_pid" 'SNOWLUMA_HOOK_AUTOLOAD=1'; then
-      error "检测到旧 SnowLuma 自动注入仍开启（PID=$snow_pid）；先正常停止该实例"
-    fi
-  done
   if ! tcp 5100 && ! owned snow; then
     (cd "$SNL" || exit 1
       SNOWLUMA_HOOK_AUTOLOAD=0 nohup ./launcher.sh \
