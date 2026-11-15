@@ -49,7 +49,7 @@ jobs:
                            "$LAB/vnc.pass", "127.0.0.1:6082",
                            "127.0.0.1:5902", "QQHOME"]:
               assert required in blocks[0], f"missing QQ runner setting: {required}"
-          for forbidden in ["src/server.js", "SNOWLUMA_HOOK_AUTOLOAD=1",
+          for forbidden in ["src/server.js", "SNOWLUMA_HOOK_AUTOLOAD=1 nohup",
                             "-nopw", "--in-process-gpu", "--no-zygote"]:
               assert forbidden not in blocks[0], f"unexpected command in QQ runner: {forbidden}"
           print("Embedded QQ-only runner: bash syntax and migration checks passed")
